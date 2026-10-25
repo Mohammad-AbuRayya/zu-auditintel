@@ -652,9 +652,9 @@
     // ===================== التهيئة: تحميل بنود المكتبة من قاعدة البيانات =====================
     protected override async Task OnInitializedAsync()
     {
-        // لوحة المكتبة مخصّصة لممثل المكتبة وحده؛ غيره يعود إلى لوحته.
+        // لوحة المكتبة لممثل المكتبة، ولمدير النظام عند المعاينة.
         var user = AuthState is null ? null : (await AuthState).User;
-        if (user is null || !user.IsEntityRepresentative() || user.DepartmentId() != DepartmentIds.Library)
+        if (user is null || !user.CanViewBoard(DepartmentIds.Library))
         {
             Navigation.NavigateTo("/pending");
             return;

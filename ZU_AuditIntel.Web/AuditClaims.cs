@@ -33,12 +33,24 @@ namespace ZU_AuditIntel.Web
         public static bool IsEntityRepresentative(this ClaimsPrincipal user) =>
             user.IsInRole(AuditorRole.EntityRepresentative.ToString());
 
+        public static bool IsSystemAdministrator(this ClaimsPrincipal user) =>
+            user.IsInRole(AuditorRole.SystemAdministrator.ToString());
+
+        /// <summary>
+        /// لوحة جهة يفتحها ممثلُ تلك الجهة حصراً. مدير النظام استثناء مقصود للمعاينة والدعم،
+        /// وهو وحده من يُعفى من تطابق الجهة حتى لا يحتاج حساب خارق لكل شاشة.
+        /// </summary>
+        public static bool CanViewBoard(this ClaimsPrincipal user, string departmentId) =>
+            user.IsSystemAdministrator()
+            || (user.IsEntityRepresentative() && user.DepartmentId() == departmentId);
+
         /// <summary>التسمية العربية للدور كما تظهر في شريط الهوية.</summary>
         public static string RoleLabel(this ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.Role) switch
         {
             nameof(AuditorRole.LiaisonOfficer) => "ضابط الارتباط / المدقق الداخلي",
             nameof(AuditorRole.QualityHead) => "رئيس وحدة الاعتماد وضمان الجودة",
             nameof(AuditorRole.EntityRepresentative) => "ممثل الجهة",
+            nameof(AuditorRole.SystemAdministrator) => "مدير النظام",
             _ => "زائر"
         };
 

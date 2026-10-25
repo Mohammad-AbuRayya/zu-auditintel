@@ -93,7 +93,10 @@ namespace ZU_AuditIntel.Web.Data
             new("1000101", "مسؤول دائرة المكتبة العامة", AuditorRole.EntityRepresentative, DepartmentIds.Library, "Zu#Library1"),
             new("1000102", "مسؤول المركز الصحي", AuditorRole.EntityRepresentative, DepartmentIds.HealthCenter, "Zu#Health1"),
             new("2000201", "ضابط ارتباط جودة - المكتبة", AuditorRole.LiaisonOfficer, DepartmentIds.Library, "Zu#Liaison1"),
-            new("3000301", "رئيس وحدة التطوير وضمان الجودة", AuditorRole.QualityHead, null, "Zu#Quality1")
+            new("3000301", "رئيس وحدة التطوير وضمان الجودة", AuditorRole.QualityHead, null, "Zu#Quality1"),
+
+            // الحساب الإداري الوحيد الذي يرى لوحات كل الجهات؛ للمعاينة والدعم، ولا يرفع دليلاً ولا يعتمد نتيجة.
+            new("9999999", "مدير النظام", AuditorRole.SystemAdministrator, null, "Zu#Admin1")
         ];
     }
 }

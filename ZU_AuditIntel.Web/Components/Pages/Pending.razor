@@ -44,7 +44,7 @@
 			return;
 
 		var user = (await AuthState).User;
-		CanOpenLibraryBoard = user.IsEntityRepresentative() && user.DepartmentId() == DepartmentIds.Library;
+		CanOpenLibraryBoard = user.CanViewBoard(DepartmentIds.Library);
 	}
 }
 
