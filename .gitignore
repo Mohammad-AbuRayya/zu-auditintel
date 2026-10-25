@@ -1,0 +1,13 @@
+## Build output
+bin/
+obj/
+
+## Local editor / IDE state
+.vs/
+*.user
+*.suo
+
+## Local SQLite database (regenerate with: dotnet ef database update)
+*.db
+*.db-shm
+*.db-wal

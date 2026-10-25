@@ -1,0 +1,112 @@
+﻿@page "/"
+@layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
+
+<div class="container-fluid vh-100 vw-100 d-flex justify-content-center align-items-center bg-light m-0 p-0 overflow-hidden">
+    <div class="card shadow-sm border-0 rounded-4 my-auto" style="width: 100%; max-width: 480px; max-height: 98vh; overflow-y: auto;">
+        <div class="card-body p-4 p-sm-4">
+            
+            <!-- Header / Logo Area -->
+            <div class="text-center mb-3">
+                <div class="d-flex justify-content-center align-items-center gap-2 mb-1">
+                    <span class="fw-bold fs-2 text-primary tracking-wider">ZU</span>
+                    <span class="fs-4 text-secondary">| AuditIntel</span>
+                </div>
+                <h4 class="fw-bold text-dark mb-1">ZU-AuditIntel Portal</h4>
+                <p class="text-muted small mb-2">Zarqa University Internal Quality Audit System</p>
+                <div class="mx-auto" style="width: 40px; height: 3px; background-color: #0d6efd;"></div>
+            </div>
+
+            <!-- Notice Alert Box -->
+            <div class="alert alert-primary bg-opacity-10 border-0 text-primary small d-flex align-items-start gap-2 mb-3 rounded-3 py-2" role="alert">
+                <i class="bi bi-info-circle-fill fs-5 mt-n1"></i>
+                <div>
+                    بيانات تسجيل الدخول خاصة بأعضاء لجنة التدقيق الأكاديمي وضمان الجودة.
+                </div>
+            </div>
+
+            <!-- Login Form -->
+            <EditForm Model="@loginModel" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+
+                <!-- Username Field -->
+                <div class="mb-2">
+                    <label class="form-label fw-semibold text-dark small mb-1">Username</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0 text-muted">
+                            <i class="bi bi-person-fill"></i>
+                        </span>
+                        <InputText @bind-Value="loginModel.Username" class="form-control border-start-0 ps-0 shadow-none py-2" placeholder="Username" />
+                    </div>
+                </div>
+
+                <!-- Password Field -->
+                <div class="mb-2">
+                    <label class="form-label fw-semibold text-dark small mb-1">Password</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0 text-muted">
+                            <i class="bi bi-lock-fill"></i>
+                        </span>
+                        <InputText @bind-Value="loginModel.Password" type="password" class="form-control border-start-0 ps-0 shadow-none py-2" placeholder="Password" />
+                    </div>
+                </div>
+
+                <!-- Captcha Section -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-dark small mb-1">Enter Captcha</label>
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <div class="bg-white border rounded p-1 text-center flex-grow-1 user-select-none font-monospace fs-5 text-primary fw-bold" style="letter-spacing: 4px; background: repeating-linear-gradient(45deg, #f8f9fa, #f8f9fa 10px, #e9ecef 10px, #e9ecef 20px);">
+                            G283K
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary border bg-white px-3 py-1" @onclick="RefreshCaptcha">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <input type="text" class="form-control form-control-sm shadow-none" placeholder="" />
+                </div>
+
+                <!-- Submit Button -->
+                <div class="d-grid mb-2">
+                    <button type="submit" class="btn btn-primary py-2 fw-semibold shadow-sm">
+                        Login
+                    </button>
+                </div>
+
+                <!-- Forgot Password -->
+                <div class="text-center">
+                    <a href="forgot-password" class="text-decoration-none text-primary small fw-semibold">Forgot your password?</a>
+                </div>
+            </EditForm>
+        </div>
+
+        <!-- Footer Language Switcher -->
+        <div class="card-footer bg-white border-top py-2 text-center rounded-bottom-4">
+            <div class="d-flex justify-content-center align-items-center gap-2">
+                <i class="bi bi-translate text-muted small"></i>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary active px-3">English</button>
+                    <button type="button" class="btn btn-outline-primary px-3">عربي</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new();
+
+    private void HandleLogin()
+    {
+        // منطق تسجيل الدخول
+    }
+
+    private void RefreshCaptcha()
+    {
+        // تجديد الكابتشا
+    }
+
+    public class LoginModel
+    {
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+}

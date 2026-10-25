@@ -1,0 +1,313 @@
+﻿@page "/Library"
+@rendermode InteractiveServer
+
+<div class="container-fluid py-4" dir="rtl">
+
+    <!-- الترويسة الرسمية -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white">
+        <div class="card-body p-4">
+            <div class="row align-items-center">
+                <div class="col-md-7">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span class="badge bg-primary px-3 py-1">تعليمات التدقيق الداخلي</span>
+                        <span class="badge bg-info bg-opacity-10 text-primary border border-primary border-opacity-25">المعيار: ISO 21001:2025</span>
+                    </div>
+                    <h3 class="fw-bold text-dark mt-2 mb-1">
+                        <i class="bi bi-journal-bookmark-fill text-primary me-2"></i>تدقيق الجودة الداخلي - المكتبة
+                    </h3>
+                    <p class="text-muted small mb-0">نظام ZU-AuditIntel | يشمل البنود المشتركة (9 بنود) والبنود الخاصة بالمكتبة (4 بنود)</p>
+                </div>
+                <div class="col-md-5 text-md-start mt-3 mt-md-0">
+                    <div class="bg-light p-3 rounded-3 border">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="text-muted">نسبة إنجاز تدقيق المكتبة:</span>
+                            <span class="fw-bold text-primary">@CompletedCount من @AuditItems.Count بنداً (@((CompletedCount * 100) / AuditItems.Count)%)</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-primary" role="progressbar" style="width: @((CompletedCount * 100) / AuditItems.Count)%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+
+        <!-- القسم الأيمن: رفع الأدلة وعرض أسئلة التدقيق للبند المحدد -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 sticky-top" style="top: 20px;">
+                <div class="card-header bg-primary text-white py-3 rounded-top-4 border-0">
+                    <h6 class="fw-bold mb-0">
+                        <i class="bi bi-cloud-upload me-2"></i>رفع الأدلة وفحص البند
+                    </h6>
+                </div>
+                <div class="card-body p-4">
+
+                    <!-- اختيار البند -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-dark small">اختر البند المراد تدقيقه:</label>
+                        <select class="form-select shadow-none border-primary border-opacity-50" @bind="SelectedItemId">
+                            <optgroup label="أولاً: البنود المشتركة (العامة)">
+                                @foreach (var item in AuditItems.Where(x => x.Category == "بنود مشتركة"))
+                                {
+                                    <option value="@item.Id">@item.Id. @item.Title</option>
+                                }
+                            </optgroup>
+                            <optgroup label="ثانياً: البنود الخاصة بالمكتبة">
+                                @foreach (var item in AuditItems.Where(x => x.Category == "خاص بالمكتبة"))
+                                {
+                                    <option value="@item.Id">@item.Id. @item.Title</option>
+                                }
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    @if (CurrentItem != null)
+                    {
+                        <!-- أسئلة التدقيق والأدلة المطلوبة كما في الجدول الرسمي -->
+                        <div class="alert alert-primary bg-opacity-10 border-0 rounded-3 p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-bold text-primary small">أسئلة التدقيق:</span>
+                                <span class="badge @(CurrentItem.Category == "خاص بالمكتبة" ? "bg-info text-dark" : "bg-primary")">@CurrentItem.Category</span>
+                            </div>
+                            <ul class="small text-dark mb-3 ps-3">
+                                @foreach (var q in CurrentItem.AuditQuestions)
+                                {
+                                    <li class="mb-1">@q</li>
+                                }
+                            </ul>
+
+                            <hr class="my-2 border-primary opacity-25" />
+
+                            <div class="fw-bold text-primary small mb-2">الأدلة المطلوبة (يجب رفعها):</div>
+                            <div class="d-flex flex-wrap gap-2">
+                                @foreach (var ev in CurrentItem.RequiredEvidences)
+                                {
+                                    <span class="badge bg-white text-dark border px-2 py-1">
+                                        <i class="bi bi-check2 text-primary me-1"></i> @ev
+                                    </span>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- منطقة سحب وإفلات الملفات -->
+                        <div class="border border-2 border-dashed rounded-4 p-4 text-center bg-light mb-3 position-relative" style="border-color: #0d6efd !important;">
+                            <i class="bi bi-file-earmark-arrow-up fs-1 text-primary mb-2"></i>
+                            <h6 class="fw-bold text-dark mb-1">ارفق ملفات الأدلة المطلوبة هنا</h6>
+                            <p class="text-muted small mb-0">PDF أو DOCX</p>
+                            <InputFile OnChange="HandleFileSelected" class="position-absolute top-0 start-0 w-100 h-100 opacity-0" style="cursor: pointer;" />
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(UploadedFileName))
+                        {
+                            <div class="alert alert-success py-2 small d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-paperclip me-1"></i> @UploadedFileName</span>
+                                <span class="badge bg-success">تم الإرفاق</span>
+                            </div>
+                        }
+
+                        <button class="btn btn-primary w-100 py-2 fw-bold shadow-sm" @onclick="RunAiAudit">
+                            <i class="bi bi-cpu-fill me-2"></i> بدء التدقيق بالذكاء الاصطناعي
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- القسم الأيسر: عرض الجداول (المشتركة + الخاصة بالمكتبة) -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+
+                    <!-- أزرار الفلترة بين المشترك والخاص -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="fw-bold text-dark mb-0">قائمة الفحص والأدلة</h5>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn @(FilterCategory == "الكل" ? "btn-primary" : "btn-outline-primary")" @onclick='() => FilterCategory = "الكل"'>الكل (13)</button>
+                            <button class="btn @(FilterCategory == "بنود مشتركة" ? "btn-primary" : "btn-outline-primary")" @onclick='() => FilterCategory = "بنود مشتركة"'>البنود المشتركة (9)</button>
+                            <button class="btn @(FilterCategory == "خاص بالمكتبة" ? "btn-primary" : "btn-outline-primary")" @onclick='() => FilterCategory = "خاص بالمكتبة"'>الخاصة بالمكتبة (4)</button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle border">
+                            <thead class="table-light small text-muted">
+                                <tr>
+                                    <th>البند</th>
+                                    <th>النوع</th>
+                                    <th>أسئلة التدقيق</th>
+                                    <th>الأدلة المطلوبة</th>
+                                    <th>الحالة</th>
+                                    <th>إجراء</th>
+                                </tr>
+                            </thead>
+                            <tbody class="small">
+                                @foreach (var item in FilteredItems)
+                                {
+                                    <tr class="@(item.Id == SelectedItemId ? "table-primary bg-opacity-10" : "")">
+                                        <td class="fw-bold text-dark">@item.Title</td>
+                                        <td>
+                                            @if (item.Category == "خاص بالمكتبة")
+                                            {
+                                                <span class="badge bg-info bg-opacity-10 text-primary border border-primary border-opacity-25">خاص بالمكتبة</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-light text-secondary border">مشترك</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <ul class="mb-0 ps-3 text-muted" style="font-size: 11px;">
+                                                @foreach (var q in item.AuditQuestions)
+                                                {
+                                                    <li>@q</li>
+                                                }
+                                            </ul>
+                                        </td>
+                                        <td>
+                                            @foreach (var ev in item.RequiredEvidences)
+                                            {
+                                                <div style="font-size: 11px;" class="text-dark"><i class="bi bi-check2 text-success"></i> @ev</div>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (item.Status == "مطابق")
+                                            {
+                                                <span class="badge bg-success bg-opacity-10 text-success px-2 py-1">مطابق</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary bg-opacity-10 text-secondary px-2 py-1">بانتظار الرفع</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => SelectItem(item.Id)">
+                                                اختيار
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@code {
+    private int SelectedItemId = 1;
+    private string FilterCategory = "الكل";
+    private string UploadedFileName = "";
+
+    private AuditItemModel? CurrentItem => AuditItems.FirstOrDefault(x => x.Id == SelectedItemId);
+    private int CompletedCount => AuditItems.Count(x => x.Status == "مطابق");
+
+    private IEnumerable<AuditItemModel> FilteredItems =>
+        FilterCategory == "الكل" ? AuditItems : AuditItems.Where(x => x.Category == FilterCategory);
+
+    private void SelectItem(int id)
+    {
+        SelectedItemId = id;
+        UploadedFileName = "";
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        UploadedFileName = e.File.Name;
+    }
+
+    private void RunAiAudit()
+    {
+        if (CurrentItem != null)
+        {
+            CurrentItem.Status = "مطابق";
+        }
+    }
+
+    public class AuditItemModel
+    {
+        public int Id { get; set; }
+        public string Category { get; set; } = "";
+        public string Title { get; set; } = "";
+        public List<string> AuditQuestions { get; set; } = new();
+        public List<string> RequiredEvidences { get; set; } = new();
+        public string Status { get; set; } = "بانتظار الرفع";
+    }
+
+    // البيانات مطابقة 100% للصور المرفقة (خامساً: البنود المشتركة + سادساً: المكتبة)
+    private List<AuditItemModel> AuditItems = new()
+    {
+        // أولاً: البنود المشتركة (9 بنود)
+        new() {
+            Id = 1, Category = "بنود مشتركة", Title = "الهيكل التنظيمي",
+            AuditQuestions = new() { "هل يوجد هيكل تنظيمي معتمد ومحدث؟", "هل يوضح خطوط السلطة والمسؤوليات؟", "هل يتم مراجعته وتعميمه دورياً؟" },
+            RequiredEvidences = new() { "نسخة الهيكل المعتمد", "قرار الاعتماد", "سجل التحديثات", "تعميم داخلي" }
+        },
+        new() {
+            Id = 2, Category = "بنود مشتركة", Title = "الوصف الوظيفي",
+            AuditQuestions = new() { "هل يوجد وصف وظيفي لكل موظف؟", "هل يتوافق مع المهام الفعلية؟", "هل يتم تحديثه بشكل دوري؟" },
+            RequiredEvidences = new() { "بطاقات الوصف الوظيفي", "تواقيع الموظفين", "سجل التحديث" }
+        },
+        new() {
+            Id = 3, Category = "بنود مشتركة", Title = "ضبط الوثائق والسجلات",
+            AuditQuestions = new() { "هل يتم تطبيق إجراء ضبط الوثائق؟", "هل يتم التحكم بالإصدارات؟", "هل يتم أرشفة الوثائق وإتاحتها؟" },
+            RequiredEvidences = new() { "سجل الوثائق", "سجل الإصدارات", "طلبات تعديل الوثائق", "نظام الأرشفة" }
+        },
+        new() {
+            Id = 4, Category = "بنود مشتركة", Title = "الخطة الاستراتيجية",
+            AuditQuestions = new() { "هل توجد خطة استراتيجية معتمدة؟", "هل تتماشى مع رؤية الجامعة؟", "هل يتم تتبع تنفيذها؟" },
+            RequiredEvidences = new() { "وثيقة الخطة", "تقارير متابعة", "مؤشرات الأداء" }
+        },
+        new() {
+            Id = 5, Category = "بنود مشتركة", Title = "مؤشرات الأداء",
+            AuditQuestions = new() { "هل توجد مؤشرات أداء واضحة؟", "هل يتم قياسها وتحليلها دورياً؟", "هل تتخذ إجراءات بناءً على النتائج؟" },
+            RequiredEvidences = new() { "تقارير KPI", "تحليل الأداء", "خطط التحسين" }
+        },
+        new() {
+            Id = 6, Category = "بنود مشتركة", Title = "تحليل SWOT",
+            AuditQuestions = new() { "هل تم إعداد تحليل SWOT؟", "هل يتم تحديثه واستخدامه في التخطيط؟" },
+            RequiredEvidences = new() { "تقرير SWOT", "محاضر الاجتماعات" }
+        },
+        new() {
+            Id = 7, Category = "بنود مشتركة", Title = "إدارة المخاطر",
+            AuditQuestions = new() { "هل تم تحديد وتقييم المخاطر؟", "هل توجد خطط معالجة ومراجعة دورية؟" },
+            RequiredEvidences = new() { "سجل المخاطر", "خطة المعالجة", "تقارير المراجعة" }
+        },
+        new() {
+            Id = 8, Category = "بنود مشتركة", Title = "التدريب والكفاءة",
+            AuditQuestions = new() { "هل توجد خطة تدريب سنوية؟", "هل يتم تنفيذها وتقييم أثرها؟" },
+            RequiredEvidences = new() { "خطة تدريب", "سجلات حضور", "تقارير التقييم" }
+        },
+        new() {
+            Id = 9, Category = "بنود مشتركة", Title = "الشكاوى ورضا المستفيدين",
+            AuditQuestions = new() { "هل توجد آلية فعالة للشكاوى؟", "هل يتم تحليل الشكاوى وقياس رضا المستفيدين؟", "هل تنفذ تحسينات؟" },
+            RequiredEvidences = new() { "نماذج الشكاوى", "تقارير التحليل", "استبانات الرضا" }
+        },
+
+        // ثانياً: البنود الخاصة بالمكتبة (4 بنود)
+        new() {
+            Id = 10, Category = "خاص بالمكتبة", Title = "نظام إدارة المكتبة",
+            AuditQuestions = new() { "هل يوجد نظام مكتبة فعال؟", "هل يتم تحديثه وصيانته؟" },
+            RequiredEvidences = new() { "نظام المكتبة", "تقارير الاستخدام" }
+        },
+        new() {
+            Id = 11, Category = "خاص بالمكتبة", Title = "الإعارة",
+            AuditQuestions = new() { "هل توجد إجراءات إعارة واضحة؟", "هل يتم توثيق العمليات؟" },
+            RequiredEvidences = new() { "سجلات الإعارة" }
+        },
+        new() {
+            Id = 12, Category = "خاص بالمكتبة", Title = "المصادر الإلكترونية",
+            AuditQuestions = new() { "هل يتم تحديث الاشتراكات وقواعد البيانات؟" },
+            RequiredEvidences = new() { "اشتراكات", "تقارير التحديث" }
+        },
+        new() {
+            Id = 13, Category = "خاص بالمكتبة", Title = "رضا المستفيدين (المكتبة)",
+            AuditQuestions = new() { "هل يتم قياس رضا المستفيدين؟", "هل تُحل الشكاوى؟" },
+            RequiredEvidences = new() { "اشتراكات", "تقارير التحديث" }
+        }
+    };
+}

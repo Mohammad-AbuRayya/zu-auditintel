@@ -1,0 +1,1402 @@
+﻿@page "/LibraryAudit"
+@layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
+@rendermode InteractiveServer
+@inject AppDbContext Db
+@using System.IO
+@using System.IO.Compression
+@using System.Net
+@using System.Text
+@using System.Text.RegularExpressions
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>تدقيق دائرة المكتبة العامة | ZU-AuditIntel</PageTitle>
+
+<style>
+    .zu-audit-page {
+        background-color: #f8f9fa;
+        min-height: 100%;
+    }
+
+    .zu-header-strip {
+        height: 6px;
+        background: linear-gradient(90deg, #0d6efd, #6ea8fe) !important;
+    }
+
+    .zu-logo {
+        width: 64px;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        flex-shrink: 0;
+    }
+
+    .zu-stat-icon {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .zu-progress {
+        height: 14px;
+    }
+
+    .zu-dropzone {
+        position: relative;
+        border: 2px dashed #9ec5fe;
+        background-color: #f4f8ff;
+        padding: 1.75rem 1rem;
+        transition: all .2s ease;
+    }
+
+        .zu-dropzone:hover, .zu-dropzone.drag-over {
+            border-color: #0d6efd;
+            background-color: #e7f1ff;
+        }
+
+        .zu-dropzone.disabled {
+            opacity: .6;
+        }
+
+    .zu-dropzone-input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    .zu-dropzone-icon {
+        font-size: 2.5rem;
+        color: #0d6efd;
+    }
+
+    .zu-table tbody tr {
+        cursor: pointer;
+        transition: background-color .15s ease;
+    }
+
+        .zu-table tbody tr.zu-selected > * {
+            background-color: #e7f1ff !important;
+        }
+
+    .zu-check-item {
+        border: 1px solid #e9ecef;
+        background: #fff;
+    }
+
+    .zu-check-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .zu-evidence {
+        border: 1px solid #e9ecef;
+        background: #fff;
+        cursor: pointer;
+        transition: all .15s ease;
+    }
+
+        .zu-evidence.done {
+            border-color: #a3cfbb;
+            background: #f1faf5;
+        }
+
+    .zu-note {
+        font-size: .8rem;
+        max-width: 260px;
+    }
+
+    .zu-section-title {
+        font-size: .85rem;
+        font-weight: 700;
+        color: #495057;
+    }
+
+    @@media (min-width: 992px) {
+        .zu-sticky {
+            position: sticky;
+            top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+        }
+    }
+</style>
+
+<div dir="rtl" class="zu-audit-page py-3">
+    <div class="container-fluid px-2 px-md-3">
+
+        @* ===================== 1) رأس الصفحة ===================== *@
+        <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+            <div class="zu-header-strip"></div>
+            <div class="card-body p-4">
+                <div class="row g-4 align-items-center">
+                    <div class="col-lg-7">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="zu-logo bg-primary text-white rounded-4 shadow-sm">
+                                <i class="bi bi-shield-check"></i>
+                            </div>
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <h1 class="h4 fw-bold mb-0 text-primary" dir="ltr">ZU-AuditIntel</h1>
+                                    <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                                        <i class="bi bi-stars"></i> مدعوم بالذكاء الاصطناعي
+                                    </span>
+                                </div>
+                                <div class="small text-muted" dir="ltr">Zarqa University Internal Quality Audit System</div>
+                                <h2 class="h5 fw-bold mt-2 mb-0 text-dark">
+                                    <i class="bi bi-book-half text-primary"></i> تدقيق دائرة المكتبة العامة
+                                </h2>
+                            </div>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2 mt-3">
+                            <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-file-earmark-text text-primary"></i>
+                                رمز الوثيقة: <span dir="ltr" class="fw-bold">ZU/QP02F003</span>
+                            </span>
+                            <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-patch-check text-primary"></i>
+                                المعيار المرجعي: <span dir="ltr" class="fw-bold">ISO 21001:2025</span>
+                            </span>
+                            <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
+                                <i class="bi bi-calendar3 text-primary"></i>
+                                تاريخ التدقيق: <span dir="ltr" class="fw-bold">@AuditDate.ToString("yyyy/MM/dd")</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-5">
+                        <div class="bg-light rounded-4 p-3 border">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="fw-semibold"><i class="bi bi-graph-up-arrow text-primary"></i> نسبة الإنجاز (البنود المطابقة)</span>
+                                <span class="fs-5 fw-bold text-primary">@CompletionPercent%</span>
+                            </div>
+                            <div class="progress zu-progress rounded-pill" role="progressbar"
+                                 aria-label="نسبة الإنجاز" aria-valuenow="@CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+                                <div class="progress-bar progress-bar-striped @(CompletionPercent < 100 ? "progress-bar-animated" : "") @ProgressBarColor"
+                                     style="width: @(CompletionPercent)%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between small text-muted mt-2">
+                                <span>@CompliantCount من أصل @AuditItems.Count بنداً مطابقاً</span>
+                                <span>
+                                    <i class="bi bi-x-circle text-danger"></i> @NonCompliantCount
+                                    &nbsp;
+                                    <i class="bi bi-exclamation-triangle text-warning"></i> @NeedsReviewCount
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ===================== 2) شريط الإحصائيات ===================== *@
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <div class="zu-stat-icon rounded-4 bg-primary-subtle text-primary"><i class="bi bi-list-check"></i></div>
+                        <div>
+                            <div class="small text-muted">إجمالي البنود</div>
+                            <div class="fs-3 fw-bold">@AuditItems.Count</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <div class="zu-stat-icon rounded-4 bg-info-subtle text-info-emphasis"><i class="bi bi-diagram-3"></i></div>
+                        <div>
+                            <div class="small text-muted">البنود المشتركة</div>
+                            <div class="fs-3 fw-bold">@CommonCount</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <div class="zu-stat-icon rounded-4 bg-warning-subtle text-warning-emphasis"><i class="bi bi-book"></i></div>
+                        <div>
+                            <div class="small text-muted">البنود الخاصة بالمكتبة</div>
+                            <div class="fs-3 fw-bold">@LibraryCount</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <div class="zu-stat-icon rounded-4 bg-success-subtle text-success"><i class="bi bi-check2-circle"></i></div>
+                        <div>
+                            <div class="small text-muted">البنود المكتملة / المطابقة</div>
+                            <div class="fs-3 fw-bold">@CompliantCount <span class="fs-6 text-muted fw-normal">/ @AuditItems.Count</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ===================== 3) القسم الرئيسي ===================== *@
+        <div class="row g-4 align-items-start">
+
+            @* ---------- العمود الأيمن: رفع الأدلة والفحص الذكي ---------- *@
+            <div class="col-lg-5">
+                <div class="card border-0 shadow-sm rounded-4 zu-sticky">
+                    <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-2">
+                        <h3 class="h6 fw-bold mb-3 d-flex align-items-center gap-2">
+                            <i class="bi bi-cloud-arrow-up-fill text-primary fs-5"></i>
+                            رفع الأدلة الموضوعية والفحص الذكي
+                        </h3>
+                        <label for="itemSelect" class="form-label small text-muted mb-1">اختر البند المراد تدقيقه</label>
+                        <select id="itemSelect" class="form-select rounded-3" value="@(SelectedItem?.Id ?? 0)" @onchange="OnItemSelectChanged">
+                            <option value="0">-- اختر بنداً من القائمة --</option>
+                            <optgroup label="نموذج التدقيق العام - البنود المشتركة">
+                                @foreach (var opt in AuditItems.Where(i => i.Category == ItemCategory.Common))
+                                {
+                                    <option value="@opt.Id">@opt.Id. @opt.Title</option>
+                                }
+                            </optgroup>
+                            <optgroup label="البنود الخاصة بالمكتبة">
+                                @foreach (var opt in AuditItems.Where(i => i.Category == ItemCategory.Library))
+                                {
+                                    <option value="@opt.Id">@opt.Id. @opt.Title</option>
+                                }
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <div class="card-body px-4 pb-4">
+                        @if (SelectedItem is null)
+                        {
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-hand-index-thumb display-5 text-primary opacity-50"></i>
+                                <p class="mt-3 mb-0">اختر بنداً من القائمة المنسدلة أو اضغط زر <strong>"اختيار / رفع"</strong> من جدول البنود لبدء رفع الأدلة.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            var item = SelectedItem;
+
+                            @* اسم البند ونوعه *@
+                            <div class="d-flex justify-content-between align-items-start gap-2 p-3 rounded-4 bg-primary-subtle border border-primary-subtle mb-3">
+                                <div>
+                                    <div class="small text-primary-emphasis">البند رقم @item.Id</div>
+                                    <div class="fs-5 fw-bold text-primary-emphasis">@item.Title</div>
+                                </div>
+                                <div class="d-flex flex-column align-items-end gap-1">
+                                    <span class="badge rounded-pill @CategoryBadgeClass(item.Category)">@CategoryLabel(item.Category)</span>
+                                    <span class="badge rounded-pill @StatusBadgeClass(item.Status) d-inline-flex align-items-center gap-1">
+                                        <i class="bi @StatusIcon(item.Status)"></i> @StatusLabel(item.Status)
+                                    </span>
+                                </div>
+                            </div>
+
+                            @* أسئلة التدقيق *@
+                            <div class="mb-3">
+                                <div class="zu-section-title mb-2"><i class="bi bi-question-circle text-primary"></i> أسئلة التدقيق</div>
+                                <ol class="list-group list-group-numbered rounded-3">
+                                    @foreach (var q in item.Questions)
+                                    {
+                                        <li class="list-group-item small py-2">@q</li>
+                                    }
+                                </ol>
+                            </div>
+
+                            @* الأدلة المطلوبة *@
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div class="zu-section-title"><i class="bi bi-folder-check text-primary"></i> الأدلة المطلوبة</div>
+                                    <span class="badge rounded-pill text-bg-light border">@item.ProvidedEvidence.Count / @item.RequiredEvidence.Count مُرفق</span>
+                                </div>
+                                <div class="small text-muted mb-2">أشّر على الدليل بعد رفع الملف الذي يغطيه.</div>
+                                <div class="d-flex flex-column gap-2">
+                                    @foreach (var ev in item.RequiredEvidence)
+                                    {
+                                        var done = item.ProvidedEvidence.Contains(ev);
+                                        <label class="zu-evidence rounded-3 px-3 py-2 d-flex align-items-center gap-2 small mb-0 @(done ? "done" : "")">
+                                            <input type="checkbox" class="form-check-input m-0" checked="@done"
+                                                   disabled="@item.IsAnalyzing"
+                                                   @onchange="() => ToggleEvidence(item, ev)" />
+                                            <i class="bi @(done ? "bi-file-earmark-check-fill text-success" : "bi-file-earmark text-secondary")"></i>
+                                            <span class="@(done ? "fw-semibold text-success-emphasis" : "")">@ev</span>
+                                        </label>
+                                    }
+                                </div>
+                            </div>
+
+                            @* منطقة السحب والإفلات *@
+                            <div class="mb-3">
+                                <div class="zu-section-title mb-2"><i class="bi bi-paperclip text-primary"></i> رفع ملفات الأدلة</div>
+                                <div class="zu-dropzone rounded-4 @(IsDragOver ? "drag-over" : "") @(item.IsAnalyzing || IsUploading ? "disabled" : "")"
+                                     @ondragenter="() => IsDragOver = true"
+                                     @ondragleave="() => IsDragOver = false"
+                                     @ondrop="() => IsDragOver = false">
+                                    <InputFile @key="item.Id"
+                                               OnChange="OnFilesSelectedAsync"
+                                               multiple
+                                               accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                               class="zu-dropzone-input"
+                                               title="اسحب الملفات هنا أو اضغط للاختيار"
+                                               disabled="@(item.IsAnalyzing || IsUploading)" />
+                                    <div class="text-center pe-none">
+                                        @if (IsUploading)
+                                        {
+                                            <div class="spinner-border text-primary" role="status"></div>
+                                            <div class="fw-semibold mt-2">جارٍ رفع الملفات وقراءتها...</div>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-cloud-upload zu-dropzone-icon"></i>
+                                            <div class="fw-semibold mt-1">اسحب الملفات وأفلتها هنا</div>
+                                            <div class="small text-muted">أو اضغط لاختيار الملفات من جهازك</div>
+                                            <div class="d-flex justify-content-center gap-2 mt-2">
+                                                <span class="badge text-bg-danger"><i class="bi bi-filetype-pdf"></i> PDF</span>
+                                                <span class="badge text-bg-primary"><i class="bi bi-filetype-docx"></i> DOCX</span>
+                                                <span class="badge text-bg-light border">حتى @(MaxFileSizeMb) ميغابايت للملف</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                @if (UploadErrors.Count > 0)
+                                {
+                                    <div class="alert alert-danger rounded-3 small mt-2 mb-0 py-2">
+                                        @foreach (var err in UploadErrors)
+                                        {
+                                            <div class="d-flex gap-2"><i class="bi bi-exclamation-octagon"></i><span>@err</span></div>
+                                        }
+                                    </div>
+                                }
+
+                                @if (item.Files.Count > 0)
+                                {
+                                    <ul class="list-group rounded-3 mt-2">
+                                        @foreach (var f in item.Files)
+                                        {
+                                            <li class="list-group-item d-flex align-items-center gap-2 py-2">
+                                                <i class="bi @(f.Extension == ".pdf" ? "bi-file-earmark-pdf-fill text-danger" : "bi-file-earmark-word-fill text-primary") fs-4"></i>
+                                                <div class="flex-grow-1 overflow-hidden">
+                                                    <div class="small fw-semibold text-truncate" dir="auto" title="@f.Name">@f.Name</div>
+                                                    <div class="small text-muted">@FormatSize(f.Size) · @f.UploadedAt.ToString("HH:mm")</div>
+                                                </div>
+                                                <button type="button" class="btn btn-sm btn-outline-danger rounded-3"
+                                                        title="حذف الملف" disabled="@item.IsAnalyzing"
+                                                        @onclick="() => RemoveFile(item, f)">
+                                                    <i class="bi bi-trash3"></i>
+                                                </button>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+
+                            @* قائمة فحص وكيل الذكاء الاصطناعي *@
+                            <div class="mb-3">
+                                <div class="zu-section-title mb-2"><i class="bi bi-robot text-primary"></i> قائمة فحص وكيل الذكاء الاصطناعي (AI Audit Checklist)</div>
+                                <div class="small text-muted mb-2">سيقوم الوكيل الذكي بفحص كل ملف مرفوع تلقائياً وفق المعايير التالية:</div>
+                                <div class="d-flex flex-column gap-2">
+                                    @foreach (var check in item.Checks)
+                                    {
+                                        <div class="zu-check-item rounded-3 p-2 d-flex gap-2 align-items-start">
+                                            <div class="zu-check-icon rounded-circle @CheckIconBg(check.State)">
+                                                @if (check.State == CheckState.Running)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi @CheckIcon(check.State)"></i>
+                                                }
+                                            </div>
+                                            <div class="flex-grow-1">
+                                                <div class="small fw-semibold">@check.Title</div>
+                                                <div class="small text-muted">@check.Description</div>
+                                                @if (check.Details.Count > 0)
+                                                {
+                                                    <ul class="small mb-0 mt-1 ps-0 list-unstyled">
+                                                        @foreach (var d in check.Details)
+                                                        {
+                                                            <li class="@CheckTextClass(check.State)"><i class="bi bi-dot"></i>@d</li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            @* زر بدء التحليل *@
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-primary btn-lg rounded-4 shadow-sm d-flex align-items-center justify-content-center gap-2"
+                                        disabled="@(item.Files.Count == 0 || item.IsAnalyzing || IsUploading)"
+                                        @onclick="RunAiAuditAsync">
+                                    @if (item.IsAnalyzing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                                        <span>جارٍ التحليل والتدقيق الذكي...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-cpu"></i>
+                                        <span>بدء التحليل والتدقيق الذكي (AI Audit)</span>
+                                    }
+                                </button>
+                                @if (item.Files.Count == 0)
+                                {
+                                    <div class="small text-muted text-center"><i class="bi bi-info-circle"></i> ارفع ملفاً واحداً على الأقل لتفعيل زر التحليل.</div>
+                                }
+                                @if (item.Status != AuditStatus.NotStarted && !item.IsAnalyzing)
+                                {
+                                    <button type="button" class="btn btn-outline-secondary btn-sm rounded-3" @onclick="() => ResetItem(item)">
+                                        <i class="bi bi-arrow-counterclockwise"></i> إعادة ضبط البند
+                                    </button>
+                                }
+                            </div>
+
+                            @* نتيجة التقييم *@
+                            @if (!string.IsNullOrEmpty(item.EvaluationNote) && !item.IsAnalyzing)
+                            {
+                                <div class="alert @StatusAlertClass(item.Status) rounded-4 mt-3 mb-0">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <strong class="d-inline-flex align-items-center gap-1">
+                                            <i class="bi @StatusIcon(item.Status)"></i> نتيجة التقييم: @StatusLabel(item.Status)
+                                        </strong>
+                                        <span class="badge text-bg-light border">الدرجة: @item.Score%</span>
+                                    </div>
+                                    <div class="small" style="white-space: pre-line;">@item.EvaluationNote</div>
+                                    @if (item.LastAuditedAt is not null)
+                                    {
+                                        <div class="small text-muted mt-2"><i class="bi bi-clock-history"></i> آخر فحص: @item.LastAuditedAt.Value.ToString("yyyy/MM/dd HH:mm")</div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* ---------- العمود الأيسر: جدول البنود ---------- *@
+            <div class="col-lg-7">
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                            <h3 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
+                                <i class="bi bi-table text-primary fs-5"></i> بنود التدقيق
+                            </h3>
+                            <div class="btn-group rounded-3" role="group" aria-label="فلترة البنود" dir="rtl">
+                                <button type="button" class="btn btn-sm @(ActiveFilter == ItemFilter.All ? "btn-primary" : "btn-outline-primary")"
+                                        @onclick="() => ActiveFilter = ItemFilter.All">
+                                    الكل (@AuditItems.Count)
+                                </button>
+                                <button type="button" class="btn btn-sm @(ActiveFilter == ItemFilter.Common ? "btn-primary" : "btn-outline-primary")"
+                                        @onclick="() => ActiveFilter = ItemFilter.Common">
+                                    البنود المشتركة (@CommonCount)
+                                </button>
+                                <button type="button" class="btn btn-sm @(ActiveFilter == ItemFilter.Library ? "btn-primary" : "btn-outline-primary")"
+                                        @onclick="() => ActiveFilter = ItemFilter.Library">
+                                    الخاصة بالمكتبة (@LibraryCount)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0 zu-table">
+                                <thead class="table-light">
+                                    <tr class="small text-muted">
+                                        <th class="text-center" style="width: 50px;">#</th>
+                                        <th>البند</th>
+                                        <th class="d-none d-md-table-cell">النوع</th>
+                                        <th class="text-center">الأدلة</th>
+                                        <th>الحالة</th>
+                                        <th class="text-center">إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in FilteredItems)
+                                    {
+                                        <tr class="@(SelectedItem?.Id == row.Id ? "zu-selected" : "")" @onclick="() => SelectItem(row.Id)">
+                                            <td class="text-center fw-bold text-primary">@row.Id</td>
+                                            <td>
+                                                <div class="fw-semibold">@row.Title</div>
+                                                <div class="small text-muted">@row.Questions.Count أسئلة تدقيق</div>
+                                            </td>
+                                            <td class="d-none d-md-table-cell">
+                                                <span class="badge rounded-pill @CategoryBadgeClass(row.Category)">@CategoryLabel(row.Category)</span>
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="small fw-semibold">@row.ProvidedEvidence.Count / @row.RequiredEvidence.Count</div>
+                                                <div class="small text-muted"><i class="bi bi-paperclip"></i> @row.Files.Count ملف</div>
+                                            </td>
+                                            <td>
+                                                <span class="badge rounded-pill @StatusBadgeClass(row.Status) d-inline-flex align-items-center gap-1">
+                                                    @if (row.IsAnalyzing)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm" style="width: .7rem; height: .7rem;"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi @StatusIcon(row.Status)"></i>
+                                                    }
+                                                    @StatusLabel(row.Status)
+                                                </span>
+                                                @if (!string.IsNullOrEmpty(row.ShortNote))
+                                                {
+                                                    <div class="zu-note text-muted mt-1">@row.ShortNote</div>
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-sm btn-outline-primary rounded-3 text-nowrap"
+                                                        @onclick="() => SelectItem(row.Id)"
+                                                        @onclick:stopPropagation="true">
+                                                    <i class="bi bi-upload"></i> اختيار / رفع
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="card-footer bg-white border-0 rounded-bottom-4 px-4 py-3">
+                        <div class="d-flex flex-wrap gap-3 small text-muted">
+                            <span><i class="bi bi-check-circle-fill text-success"></i> مطابق: @CompliantCount</span>
+                            <span><i class="bi bi-x-circle-fill text-danger"></i> غير مطابق: @NonCompliantCount</span>
+                            <span><i class="bi bi-exclamation-triangle-fill text-warning"></i> يحتاج مراجعة: @NeedsReviewCount</span>
+                            <span><i class="bi bi-circle text-secondary"></i> لم يبدأ / بانتظار الفحص: @(AuditItems.Count - CompliantCount - NonCompliantCount - NeedsReviewCount)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // ===================== الإعدادات =====================
+    private const int MaxFilesPerUpload = 10;
+    private const int MaxFileSizeMb = 20;
+    private const long MaxFileSize = MaxFileSizeMb * 1024L * 1024L;
+    private static readonly string[] AllowedExtensions = { ".pdf", ".docx" };
+
+    private const string CheckHeader = "header";
+    private const string CheckIsoCode = "iso-code";
+    private const string CheckTextLayer = "text-layer";
+    private const string CheckSignatures = "signatures";
+
+    private static readonly Regex IsoCodeRegex = new(@"ZU\s*/\s*QP\s*\d{1,3}(\s*F\s*\d{1,4})?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex VersionRegex = new(@"(الإصدار|الاصدار|رقم الإصدار|Issue|Version|Rev(ision)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SignatureRegex = new(@"(توقيع|التوقيع|ختم|الختم|المصادقة|Signature|Stamp)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex UniversityRegex = new(@"(جامعة\s*الزرقاء|Zarqa\s*University)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex WordTextRegex = new(@"<w:t(?:\s[^>]*)?>([^<]*)</w:t>", RegexOptions.Compiled);
+    private static readonly Regex WordCellRegex = new(@"<w:tc\b[^>]*>(.*?)</w:tc>", RegexOptions.Singleline | RegexOptions.Compiled);
+    private static readonly Regex WordNonEmptyTextRegex = new(@"<w:t(?:\s[^>]*)?>[^<]*\S[^<]*</w:t>", RegexOptions.Compiled);
+    private static readonly Regex PdfImageRegex = new(@"/Subtype\s*/Image", RegexOptions.Compiled);
+
+    // ===================== الحالة =====================
+    private List<AuditItem> AuditItems = new();
+    private AuditItem? SelectedItem;
+    private ItemFilter ActiveFilter = ItemFilter.All;
+    private bool IsDragOver;
+    private bool IsUploading;
+    private readonly List<string> UploadErrors = new();
+    private readonly DateTime AuditDate = DateTime.Today;
+
+    // ===================== القيم المحسوبة =====================
+    private int CommonCount => AuditItems.Count(i => i.Category == ItemCategory.Common);
+    private int LibraryCount => AuditItems.Count(i => i.Category == ItemCategory.Library);
+    private int CompliantCount => AuditItems.Count(i => i.Status == AuditStatus.Compliant);
+    private int NonCompliantCount => AuditItems.Count(i => i.Status == AuditStatus.NonCompliant);
+    private int NeedsReviewCount => AuditItems.Count(i => i.Status == AuditStatus.NeedsReview);
+    private int CompletionPercent => AuditItems.Count == 0 ? 0 : (int)Math.Round(CompliantCount * 100.0 / AuditItems.Count);
+
+    private string ProgressBarColor => CompletionPercent switch
+    {
+        100 => "bg-success",
+        >= 50 => "bg-primary",
+        _ => "bg-info"
+    };
+
+    private IEnumerable<AuditItem> FilteredItems => ActiveFilter switch
+    {
+        ItemFilter.Common => AuditItems.Where(i => i.Category == ItemCategory.Common),
+        ItemFilter.Library => AuditItems.Where(i => i.Category == ItemCategory.Library),
+        _ => AuditItems
+    };
+
+    // ===================== التهيئة: البنود الـ 13 =====================
+    protected override void OnInitialized()
+    {
+        AuditItems = new List<AuditItem>
+        {
+            // ---------- أولاً: نموذج التدقيق العام - البنود المشتركة (9 بنود) ----------
+            new AuditItem
+            {
+                Id = 1,
+                Title = "الهيكل التنظيمي",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل يوجد هيكل تنظيمي معتمد ومحدث؟",
+                    "هل يوضح خطوط السلطة والمسؤوليات؟",
+                    "هل يتم مراجعته وتعميمه دورياً؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "نسخة الهيكل المعتمد",
+                    "قرار الاعتماد",
+                    "سجل التحديثات",
+                    "تعميم داخلي"
+                }
+            },
+            new AuditItem
+            {
+                Id = 2,
+                Title = "الوصف الوظيفي",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل يوجد وصف وظيفي لكل موظف؟",
+                    "هل يتوافق مع المهام الفعلية؟",
+                    "هل يتم تحديثه بشكل دوري؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "بطاقات الوصف الوظيفي",
+                    "تواقيع الموظفين",
+                    "سجل التحديث"
+                }
+            },
+            new AuditItem
+            {
+                Id = 3,
+                Title = "ضبط الوثائق والسجلات",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل يتم تطبيق إجراء ضبط الوثائق؟",
+                    "هل يتم التحكم بالإصدارات؟",
+                    "هل يتم أرشفة الوثائق وإتاحتها؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "سجل الوثائق",
+                    "سجل الإصدارات",
+                    "طلبات تعديل الوثائق",
+                    "نظام الأرشفة"
+                }
+            },
+            new AuditItem
+            {
+                Id = 4,
+                Title = "الخطة الاستراتيجية",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل توجد خطة استراتيجية معتمدة؟",
+                    "هل تتماشى مع رؤية الجامعة؟",
+                    "هل يتم تتبع تنفيذها؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "وثيقة الخطة",
+                    "تقارير متابعة",
+                    "مؤشرات الأداء"
+                }
+            },
+            new AuditItem
+            {
+                Id = 5,
+                Title = "مؤشرات الأداء",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل توجد مؤشرات أداء واضحة؟",
+                    "هل يتم قياسها وتحليلها دورياً؟",
+                    "هل تتخذ إجراءات بناءً على النتائج؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "تقارير KPI",
+                    "تحليل الأداء",
+                    "خطط التحسين"
+                }
+            },
+            new AuditItem
+            {
+                Id = 6,
+                Title = "تحليل SWOT",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل تم إعداد تحليل SWOT؟",
+                    "هل يتم تحديثه واستخدامه في التخطيط؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "تقرير SWOT",
+                    "محاضر الاجتماعات"
+                }
+            },
+            new AuditItem
+            {
+                Id = 7,
+                Title = "إدارة المخاطر",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل تم تحديد وتقييم المخاطر؟",
+                    "هل توجد خطط معالجة ومراجعة دورية؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "سجل المخاطر",
+                    "خطة المعالجة",
+                    "تقارير المراجعة"
+                }
+            },
+            new AuditItem
+            {
+                Id = 8,
+                Title = "التدريب والكفاءة",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل توجد خطة تدريب سنوية؟",
+                    "هل يتم تنفيذها وتقييم أثرها؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "خطة تدريب",
+                    "سجلات حضور",
+                    "تقارير التقييم"
+                }
+            },
+            new AuditItem
+            {
+                Id = 9,
+                Title = "الشكاوى ورضا المستفيدين",
+                Category = ItemCategory.Common,
+                Questions = new()
+                {
+                    "هل توجد آلية فعالة للشكاوى؟",
+                    "هل يتم تحليل الشكاوى وقياس رضا المستفيدين؟",
+                    "هل تنفذ تحسينات؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "نماذج الشكاوى",
+                    "تقارير التحليل",
+                    "استبانات الرضا"
+                }
+            },
+
+            // ---------- ثانياً: البنود الخاصة بالمكتبة (4 بنود) ----------
+            new AuditItem
+            {
+                Id = 10,
+                Title = "نظام إدارة المكتبة",
+                Category = ItemCategory.Library,
+                Questions = new()
+                {
+                    "هل يوجد نظام مكتبة فعال؟",
+                    "هل يتم تحديثه وصيانته؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "نظام المكتبة",
+                    "تقارير الاستخدام"
+                }
+            },
+            new AuditItem
+            {
+                Id = 11,
+                Title = "الإعارة",
+                Category = ItemCategory.Library,
+                Questions = new()
+                {
+                    "هل توجد إجراءات إعارة واضحة؟",
+                    "هل يتم توثيق العمليات؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "سجلات الإعارة"
+                }
+            },
+            new AuditItem
+            {
+                Id = 12,
+                Title = "المصادر الإلكترونية",
+                Category = ItemCategory.Library,
+                Questions = new()
+                {
+                    "هل يتم تحديث الاشتراكات وقواعد البيانات؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "اشتراكات",
+                    "تقارير التحديث"
+                }
+            },
+            new AuditItem
+            {
+                Id = 13,
+                Title = "رضا المستفيدين",
+                Category = ItemCategory.Library,
+                Questions = new()
+                {
+                    "هل يتم قياس رضا المستفيدين؟",
+                    "هل تُحل الشكاوى؟"
+                },
+                RequiredEvidence = new()
+                {
+                    "اشتراكات",
+                    "تقارير التحديث"
+                }
+            }
+        };
+
+        foreach (var item in AuditItems)
+        {
+            item.Checks = CreateAiChecks();
+        }
+    }
+
+    // ===================== اختيار البند =====================
+    private void OnItemSelectChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+            SelectItem(id);
+        else
+            SelectedItem = null;
+    }
+
+    private void SelectItem(int id)
+    {
+        SelectedItem = AuditItems.FirstOrDefault(i => i.Id == id);
+        UploadErrors.Clear();
+        IsDragOver = false;
+    }
+
+    private void ToggleEvidence(AuditItem item, string evidence)
+    {
+        if (!item.ProvidedEvidence.Remove(evidence))
+            item.ProvidedEvidence.Add(evidence);
+    }
+
+    // ===================== رفع الملفات =====================
+    private async Task OnFilesSelectedAsync(InputFileChangeEventArgs e)
+    {
+        if (SelectedItem is null) return;
+
+        var item = SelectedItem;
+        UploadErrors.Clear();
+        IsDragOver = false;
+        IsUploading = true;
+
+        try
+        {
+            var files = e.GetMultipleFiles(e.FileCount).ToList();
+            if (files.Count > MaxFilesPerUpload)
+            {
+                UploadErrors.Add($"يمكن رفع {MaxFilesPerUpload} ملفات كحد أقصى في المرة الواحدة، تم تجاهل الملفات الزائدة.");
+                files = files.Take(MaxFilesPerUpload).ToList();
+            }
+
+            foreach (var file in files)
+            {
+                var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+                if (!AllowedExtensions.Contains(ext))
+                {
+                    UploadErrors.Add($"الملف \"{file.Name}\" غير مدعوم. الصيغ المسموحة: PDF و DOCX فقط.");
+                    continue;
+                }
+                if (file.Size > MaxFileSize)
+                {
+                    UploadErrors.Add($"الملف \"{file.Name}\" يتجاوز الحد الأقصى ({MaxFileSizeMb} ميغابايت).");
+                    continue;
+                }
+
+                try
+                {
+                    await using var stream = file.OpenReadStream(MaxFileSize);
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms);
+                    var bytes = ms.ToArray();
+
+                    var inspection = ext == ".pdf" ? InspectPdf(bytes) : InspectDocx(bytes);
+
+                    item.Files.RemoveAll(f => f.Name.Equals(file.Name, StringComparison.OrdinalIgnoreCase));
+                    item.Files.Add(new UploadedEvidenceFile
+                    {
+                        Name = file.Name,
+                        Size = file.Size,
+                        Extension = ext,
+                        UploadedAt = DateTime.Now,
+                        Inspection = inspection
+                    });
+                }
+                catch (Exception ex)
+                {
+                    UploadErrors.Add($"تعذر قراءة الملف \"{file.Name}\": {ex.Message}");
+                }
+            }
+
+            MarkItemAsChanged(item);
+        }
+        finally
+        {
+            IsUploading = false;
+        }
+    }
+
+    private void RemoveFile(AuditItem item, UploadedEvidenceFile file)
+    {
+        item.Files.Remove(file);
+        MarkItemAsChanged(item);
+    }
+
+    private void ResetItem(AuditItem item)
+    {
+        item.Files.Clear();
+        item.ProvidedEvidence.Clear();
+        MarkItemAsChanged(item);
+        UploadErrors.Clear();
+    }
+
+    // أي تغيير على الملفات يُبطل نتيجة الفحص السابقة
+    private void MarkItemAsChanged(AuditItem item)
+    {
+        item.Status = item.Files.Count > 0 ? AuditStatus.Uploaded : AuditStatus.NotStarted;
+        item.Checks = CreateAiChecks();
+        item.EvaluationNote = null;
+        item.ShortNote = null;
+        item.Score = 0;
+        item.LastAuditedAt = null;
+    }
+
+    // ===================== الفحص الذكي (AI Audit) =====================
+    private static List<AiCheck> CreateAiChecks() => new()
+    {
+        new AiCheck
+        {
+            Key = CheckHeader,
+            Title = "التحقق من وجود ترويسة جامعة الزرقاء الرسمية",
+            Description = "فحص رأس الصفحة للتأكد من شعار واسم الجامعة الرسمي."
+        },
+        new AiCheck
+        {
+            Key = CheckIsoCode,
+            Title = "التحقق من صحة رقم وترميز نموذج الآيزو (ZU/QP...) والإصدار الساري",
+            Description = "مطابقة رمز النموذج ورقم الإصدار مع سجل الوثائق المعتمد."
+        },
+        new AiCheck
+        {
+            Key = CheckTextLayer,
+            Title = "التأكد من أن الملف نصي أصلي قابل للقراءة وليس صورة ممسوحة ضوئياً (Not Scanned PDF)",
+            Description = "التحقق من وجود طبقة نصية قابلة للاستخراج والبحث."
+        },
+        new AiCheck
+        {
+            Key = CheckSignatures,
+            Title = "التحقق من وجود التواقيع والأختام الرسمية وعدم وجود جداول فارغة",
+            Description = "فحص حقول الاعتماد والتواقيع واكتمال تعبئة الجداول."
+        }
+    };
+
+    private async Task RunAiAuditAsync()
+    {
+        if (SelectedItem is null || SelectedItem.Files.Count == 0 || SelectedItem.IsAnalyzing) return;
+
+        var item = SelectedItem;
+        item.IsAnalyzing = true;
+        item.Status = AuditStatus.Analyzing;
+        item.Checks = CreateAiChecks();
+        item.EvaluationNote = null;
+        item.ShortNote = null;
+        StateHasChanged();
+
+        try
+        {
+            foreach (var check in item.Checks)
+            {
+                check.State = CheckState.Running;
+                StateHasChanged();
+
+                // محاكاة زمن معالجة وكيل الذكاء الاصطناعي
+                await Task.Delay(650 + item.Files.Count * 150);
+
+                var results = item.Files
+                    .Select(f => (File: f, Result: f.Inspection.Results[check.Key]))
+                    .ToList();
+
+                check.State = results.Max(r => r.Result.State); // الأسوأ يحدد النتيجة
+                check.Details = results
+                    .Where(r => r.Result.State != CheckState.Passed || item.Files.Count == 1)
+                    .Select(r => item.Files.Count == 1 ? r.Result.Message : $"{r.File.Name}: {r.Result.Message}")
+                    .ToList();
+
+                StateHasChanged();
+            }
+
+            await Task.Delay(400);
+            EvaluateItem(item);
+        }
+        finally
+        {
+            item.IsAnalyzing = false;
+        }
+    }
+
+    private static void EvaluateItem(AuditItem item)
+    {
+        var failed = item.Checks.Where(c => c.State == CheckState.Failed).ToList();
+        var warnings = item.Checks.Where(c => c.State == CheckState.Warning).ToList();
+        var missingEvidence = item.RequiredEvidence.Where(ev => !item.ProvidedEvidence.Contains(ev)).Distinct().ToList();
+
+        var checksScore = item.Checks.Sum(c => c.State switch
+        {
+            CheckState.Passed => 1.0,
+            CheckState.Warning => 0.5,
+            _ => 0.0
+        }) / item.Checks.Count;
+        var distinctRequired = item.RequiredEvidence.Distinct().Count();
+        var evidenceScore = distinctRequired == 0 ? 1.0 : (double)(distinctRequired - missingEvidence.Count) / distinctRequired;
+        item.Score = (int)Math.Round((checksScore * 0.7 + evidenceScore * 0.3) * 100);
+
+        if (failed.Count > 0)
+            item.Status = AuditStatus.NonCompliant;
+        else if (warnings.Count > 0 || missingEvidence.Count > 0)
+            item.Status = AuditStatus.NeedsReview;
+        else
+            item.Status = AuditStatus.Compliant;
+
+        var sb = new StringBuilder();
+        switch (item.Status)
+        {
+            case AuditStatus.Compliant:
+                sb.AppendLine($"تم فحص {item.Files.Count} ملف/ملفات للبند \"{item.Title}\" واجتازت جميع معايير الفحص الآلي، وتغطي الأدلة المرفقة جميع المتطلبات وفق ISO 21001:2025.");
+                item.ShortNote = "اجتاز جميع معايير الفحص والأدلة مكتملة.";
+                break;
+
+            case AuditStatus.NonCompliant:
+                sb.AppendLine("تم رصد حالات عدم مطابقة تستوجب إجراءً تصحيحياً:");
+                foreach (var c in failed) sb.AppendLine($"• {c.Title}");
+                item.ShortNote = $"عدم مطابقة في {failed.Count} معيار/معايير.";
+                break;
+
+            case AuditStatus.NeedsReview:
+                sb.AppendLine("لم يُرصد عدم مطابقة صريح، لكن البند يحتاج مراجعة من المدقق:");
+                foreach (var c in warnings) sb.AppendLine($"• {c.Title}");
+                item.ShortNote = missingEvidence.Count > 0
+                    ? $"أدلة ناقصة ({missingEvidence.Count}) وتحتاج تحقق بشري."
+                    : "يتطلب تحققاً بشرياً من بعض المعايير.";
+                break;
+        }
+
+        if (missingEvidence.Count > 0)
+            sb.AppendLine($"الأدلة غير المؤشر عليها: {string.Join("، ", missingEvidence)}.");
+
+        if (item.Status != AuditStatus.Compliant)
+            sb.Append("التوصية: استكمال الأدلة الناقصة ومعالجة الملاحظات ثم إعادة الفحص.");
+
+        item.EvaluationNote = sb.ToString().Trim();
+        item.LastAuditedAt = DateTime.Now;
+    }
+
+    // ===================== محرك فحص الملفات =====================
+    // ملاحظة: هذا فحص هيكلي محلي للملفات (DOCX فعلي / PDF تقريبي)،
+    // ويمكن استبداله لاحقاً بخدمة ذكاء اصطناعي (IAuditAiService) دون تغيير الواجهة.
+
+    private static FileInspection InspectDocx(byte[] bytes)
+    {
+        if (bytes.Length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4B)
+            return FileInspection.Unreadable("الملف ليس مستند Word صالحاً (DOCX).");
+
+        try
+        {
+            using var ms = new MemoryStream(bytes);
+            using var zip = new ZipArchive(ms, ZipArchiveMode.Read);
+
+            var documentEntry = zip.GetEntry("word/document.xml");
+            if (documentEntry is null)
+                return FileInspection.Unreadable("بنية مستند Word غير مكتملة أو تالفة.");
+
+            var bodyXml = ReadZipEntry(documentEntry);
+            var bodyText = ExtractWordText(bodyXml);
+            var headerText = string.Join(" ", zip.Entries
+                .Where(e => e.FullName.StartsWith("word/header", StringComparison.OrdinalIgnoreCase) && e.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                .Select(e => ExtractWordText(ReadZipEntry(e))));
+            var allText = headerText + " " + bodyText;
+            var mediaCount = zip.Entries.Count(e => e.FullName.StartsWith("word/media/", StringComparison.OrdinalIgnoreCase));
+            var meaningfulChars = allText.Count(c => !char.IsWhiteSpace(c));
+
+            var inspection = new FileInspection();
+
+            // 1) الترويسة الرسمية
+            if (UniversityRegex.IsMatch(headerText))
+                inspection.Set(CheckHeader, CheckState.Passed, "تم العثور على ترويسة جامعة الزرقاء في رأس الصفحة.");
+            else if (UniversityRegex.IsMatch(bodyText))
+                inspection.Set(CheckHeader, CheckState.Warning, "ورد اسم الجامعة في المتن وليس في الترويسة الرسمية.");
+            else
+                inspection.Set(CheckHeader, CheckState.Failed, "لا توجد ترويسة جامعة الزرقاء الرسمية.");
+
+            // 2) ترميز نموذج الآيزو والإصدار
+            var codeMatch = IsoCodeRegex.Match(allText);
+            if (codeMatch.Success && VersionRegex.IsMatch(allText))
+                inspection.Set(CheckIsoCode, CheckState.Passed, $"رمز النموذج {Regex.Replace(codeMatch.Value, @"\s", "")} مع رقم الإصدار.");
+            else if (codeMatch.Success)
+                inspection.Set(CheckIsoCode, CheckState.Warning, $"تم العثور على الرمز {Regex.Replace(codeMatch.Value, @"\s", "")} دون رقم إصدار واضح.");
+            else
+                inspection.Set(CheckIsoCode, CheckState.Failed, "لم يتم العثور على ترميز نموذج آيزو (ZU/QP...).");
+
+            // 3) نصي أصلي وليس صورة ممسوحة
+            if (meaningfulChars >= 150)
+                inspection.Set(CheckTextLayer, CheckState.Passed, "المستند نصي أصلي وقابل للقراءة الآلية.");
+            else if (mediaCount > 0)
+                inspection.Set(CheckTextLayer, CheckState.Failed, "المستند يحتوي صوراً ممسوحة ضوئياً دون نص قابل للقراءة.");
+            else
+                inspection.Set(CheckTextLayer, CheckState.Warning, "المحتوى النصي قليل جداً ويحتاج تحققاً.");
+
+            // 4) التواقيع والأختام والجداول الفارغة
+            var cells = WordCellRegex.Matches(bodyXml);
+            var emptyCells = cells.Count(c => !WordNonEmptyTextRegex.IsMatch(c.Groups[1].Value));
+            var emptyRatio = cells.Count == 0 ? 0 : (double)emptyCells / cells.Count;
+            var hasSignature = SignatureRegex.IsMatch(allText);
+
+            if (emptyRatio > 0.25)
+                inspection.Set(CheckSignatures, CheckState.Failed, $"جداول غير مكتملة: {emptyCells} من أصل {cells.Count} خلية فارغة.");
+            else if (hasSignature && mediaCount > 0)
+                inspection.Set(CheckSignatures, CheckState.Passed, "حقول التواقيع/الأختام موجودة والجداول مكتملة.");
+            else if (hasSignature)
+                inspection.Set(CheckSignatures, CheckState.Warning, "توجد حقول توقيع لكن لم يُعثر على صورة توقيع أو ختم.");
+            else
+                inspection.Set(CheckSignatures, CheckState.Failed, "لا توجد حقول تواقيع أو أختام اعتماد.");
+
+            return inspection;
+        }
+        catch (InvalidDataException)
+        {
+            return FileInspection.Unreadable("الملف تالف أو محمي ولا يمكن فتحه.");
+        }
+    }
+
+    private static FileInspection InspectPdf(byte[] bytes)
+    {
+        var raw = Encoding.Latin1.GetString(bytes);
+        if (!raw.StartsWith("%PDF", StringComparison.Ordinal))
+            return FileInspection.Unreadable("الملف ليس مستند PDF صالحاً.");
+
+        if (raw.Contains("/Encrypt", StringComparison.Ordinal))
+            return FileInspection.Unreadable("ملف PDF مشفّر/محمي بكلمة مرور ولا يمكن تدقيقه آلياً.");
+
+        var inspection = new FileInspection();
+        var hasFonts = raw.Contains("/Font", StringComparison.Ordinal);
+        var imageCount = PdfImageRegex.Matches(raw).Count;
+        var isScanned = !hasFonts && imageCount > 0;
+
+        // 3) نصي أصلي وليس صورة ممسوحة
+        if (hasFonts)
+            inspection.Set(CheckTextLayer, CheckState.Passed, "ملف PDF نصي أصلي يحتوي طبقة نصية.");
+        else if (isScanned)
+            inspection.Set(CheckTextLayer, CheckState.Failed, "ملف PDF ممسوح ضوئياً (صور فقط دون طبقة نصية).");
+        else
+            inspection.Set(CheckTextLayer, CheckState.Warning, "تعذر تحديد وجود طبقة نصية.");
+
+        // 1) الترويسة الرسمية
+        if (UniversityRegex.IsMatch(raw))
+            inspection.Set(CheckHeader, CheckState.Passed, "تم العثور على اسم جامعة الزرقاء في الترويسة.");
+        else if (isScanned)
+            inspection.Set(CheckHeader, CheckState.Failed, "لا يمكن التحقق من الترويسة في ملف ممسوح ضوئياً.");
+        else
+            inspection.Set(CheckHeader, CheckState.Warning, "النص مضغوط داخل الملف؛ يلزم تحقق بصري من الترويسة.");
+
+        // 2) ترميز نموذج الآيزو والإصدار
+        var codeMatch = IsoCodeRegex.Match(raw);
+        if (codeMatch.Success)
+            inspection.Set(CheckIsoCode, CheckState.Passed, $"رمز النموذج {Regex.Replace(codeMatch.Value, @"\s", "")} موجود.");
+        else if (isScanned)
+            inspection.Set(CheckIsoCode, CheckState.Failed, "لا يمكن استخراج رمز النموذج من ملف ممسوح ضوئياً.");
+        else
+            inspection.Set(CheckIsoCode, CheckState.Warning, "تعذر استخراج رمز النموذج آلياً؛ يلزم تحقق بصري.");
+
+        // 4) التواقيع والأختام
+        if (raw.Contains("/ByteRange", StringComparison.Ordinal) || raw.Contains("/Sig", StringComparison.Ordinal))
+            inspection.Set(CheckSignatures, CheckState.Passed, "يحتوي الملف على توقيع رقمي.");
+        else if (imageCount > 0 && hasFonts)
+            inspection.Set(CheckSignatures, CheckState.Warning, "يوجد صور قد تمثل تواقيع/أختاماً؛ يلزم تأكيد بصري.");
+        else
+            inspection.Set(CheckSignatures, CheckState.Warning, "لم يُعثر على توقيع رقمي؛ يلزم تحقق بصري من التواقيع والأختام والجداول.");
+
+        return inspection;
+    }
+
+    private static string ReadZipEntry(ZipArchiveEntry entry)
+    {
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+        return reader.ReadToEnd();
+    }
+
+    private static string ExtractWordText(string xml)
+    {
+        var withBreaks = xml.Replace("</w:p>", "</w:p>\n");
+        var sb = new StringBuilder();
+        foreach (Match m in WordTextRegex.Matches(withBreaks))
+            sb.Append(WebUtility.HtmlDecode(m.Groups[1].Value));
+        return sb.ToString();
+    }
+
+    // ===================== دوال العرض المساعدة =====================
+    private static string CategoryLabel(ItemCategory c) => c == ItemCategory.Common ? "بند مشترك" : "خاص بالمكتبة";
+
+    private static string CategoryBadgeClass(ItemCategory c) => c == ItemCategory.Common
+        ? "bg-info-subtle text-info-emphasis border border-info-subtle"
+        : "bg-warning-subtle text-warning-emphasis border border-warning-subtle";
+
+    private static string StatusLabel(AuditStatus s) => s switch
+    {
+        AuditStatus.NotStarted => "لم يبدأ",
+        AuditStatus.Uploaded => "بانتظار الفحص",
+        AuditStatus.Analyzing => "قيد الفحص",
+        AuditStatus.Compliant => "مطابق",
+        AuditStatus.NonCompliant => "غير مطابق",
+        AuditStatus.NeedsReview => "يحتاج مراجعة",
+        _ => "-"
+    };
+
+    private static string StatusIcon(AuditStatus s) => s switch
+    {
+        AuditStatus.NotStarted => "bi-circle",
+        AuditStatus.Uploaded => "bi-cloud-check",
+        AuditStatus.Analyzing => "bi-cpu",
+        AuditStatus.Compliant => "bi-check-circle-fill",
+        AuditStatus.NonCompliant => "bi-x-circle-fill",
+        AuditStatus.NeedsReview => "bi-exclamation-triangle-fill",
+        _ => "bi-circle"
+    };
+
+    private static string StatusBadgeClass(AuditStatus s) => s switch
+    {
+        AuditStatus.NotStarted => "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
+        AuditStatus.Uploaded => "bg-info-subtle text-info-emphasis border border-info-subtle",
+        AuditStatus.Analyzing => "bg-primary-subtle text-primary-emphasis border border-primary-subtle",
+        AuditStatus.Compliant => "bg-success-subtle text-success-emphasis border border-success-subtle",
+        AuditStatus.NonCompliant => "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+        AuditStatus.NeedsReview => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+        _ => "text-bg-light"
+    };
+
+    private static string StatusAlertClass(AuditStatus s) => s switch
+    {
+        AuditStatus.Compliant => "alert-success",
+        AuditStatus.NonCompliant => "alert-danger",
+        AuditStatus.NeedsReview => "alert-warning",
+        _ => "alert-secondary"
+    };
+
+    private static string CheckIcon(CheckState s) => s switch
+    {
+        CheckState.Passed => "bi-check-lg",
+        CheckState.Warning => "bi-exclamation-lg",
+        CheckState.Failed => "bi-x-lg",
+        _ => "bi-hourglass"
+    };
+
+    private static string CheckIconBg(CheckState s) => s switch
+    {
+        CheckState.Passed => "bg-success-subtle text-success",
+        CheckState.Warning => "bg-warning-subtle text-warning-emphasis",
+        CheckState.Failed => "bg-danger-subtle text-danger",
+        CheckState.Running => "bg-primary-subtle",
+        _ => "bg-light text-secondary border"
+    };
+
+    private static string CheckTextClass(CheckState s) => s switch
+    {
+        CheckState.Passed => "text-success",
+        CheckState.Warning => "text-warning-emphasis",
+        CheckState.Failed => "text-danger",
+        _ => "text-muted"
+    };
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / 1024d / 1024d:0.0} MB",
+        >= 1024 => $"{bytes / 1024d:0} KB",
+        _ => $"{bytes} B"
+    };
+
+    // ===================== النماذج =====================
+    private enum ItemCategory { Common, Library }
+    private enum ItemFilter { All, Common, Library }
+    private enum AuditStatus { NotStarted, Uploaded, Analyzing, Compliant, NonCompliant, NeedsReview }
+
+    // الترتيب مهم: القيمة الأعلى = الأسوأ (تُستخدم لاختيار أسوأ نتيجة بين الملفات)
+    private enum CheckState { Pending = 0, Running = 1, Passed = 2, Warning = 3, Failed = 4 }
+
+    private sealed class AuditItem
+    {
+        public int Id { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public ItemCategory Category { get; init; }
+        public List<string> Questions { get; init; } = new();
+        public List<string> RequiredEvidence { get; init; } = new();
+        public HashSet<string> ProvidedEvidence { get; } = new();
+        public List<UploadedEvidenceFile> Files { get; } = new();
+        public List<AiCheck> Checks { get; set; } = new();
+        public AuditStatus Status { get; set; } = AuditStatus.NotStarted;
+        public bool IsAnalyzing { get; set; }
+        public int Score { get; set; }
+        public string? EvaluationNote { get; set; }
+        public string? ShortNote { get; set; }
+        public DateTime? LastAuditedAt { get; set; }
+    }
+
+    private sealed class UploadedEvidenceFile
+    {
+        public string Name { get; init; } = string.Empty;
+        public long Size { get; init; }
+        public string Extension { get; init; } = string.Empty;
+        public DateTime UploadedAt { get; init; }
+        public FileInspection Inspection { get; init; } = new();
+    }
+
+    private sealed class AiCheck
+    {
+        public string Key { get; init; } = string.Empty;
+        public string Title { get; init; } = string.Empty;
+        public string Description { get; init; } = string.Empty;
+        public CheckState State { get; set; } = CheckState.Pending;
+        public List<string> Details { get; set; } = new();
+    }
+
+    private sealed class FileInspection
+    {
+        public Dictionary<string, (CheckState State, string Message)> Results { get; } = new();
+
+        public void Set(string key, CheckState state, string message) => Results[key] = (state, message);
+
+        public static FileInspection Unreadable(string reason)
+        {
+            var inspection = new FileInspection();
+            foreach (var key in new[] { CheckHeader, CheckIsoCode, CheckTextLayer, CheckSignatures })
+                inspection.Set(key, CheckState.Failed, reason);
+            return inspection;
+        }
+    }
+}
