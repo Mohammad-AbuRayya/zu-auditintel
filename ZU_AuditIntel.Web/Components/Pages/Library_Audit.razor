@@ -1,7 +1,10 @@
 ﻿@page "/LibraryAudit"
 @layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
 @rendermode InteractiveServer
+@attribute [Authorize(Policy = AuthorizationPolicies.CanAudit)]
 @inject IAuditCatalog Catalog
+@inject NavigationManager Navigation
+@using ZU_AuditIntel.Web.Endpoints
 @using System.IO
 @using System.IO.Compression
 @using System.Net
@@ -136,6 +139,10 @@
 
 <div dir="rtl" class="zu-audit-page py-3">
     <div class="container-fluid px-2 px-md-3">
+
+        <div class="mb-3">
+            <UserBar />
+        </div>
 
         @* ===================== 1) رأس الصفحة ===================== *@
         <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
@@ -589,6 +596,9 @@
 
 @code {
     // ===================== الإعدادات =====================
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
     private const int MaxFilesPerUpload = 10;
     private const int MaxFileSizeMb = 20;
     private const long MaxFileSize = MaxFileSizeMb * 1024L * 1024L;
@@ -642,6 +652,14 @@
     // ===================== التهيئة: تحميل بنود المكتبة من قاعدة البيانات =====================
     protected override async Task OnInitializedAsync()
     {
+        // لوحة المكتبة مخصّصة لممثل المكتبة وحده؛ غيره يعود إلى لوحته.
+        var user = AuthState is null ? null : (await AuthState).User;
+        if (user is null || !user.IsEntityRepresentative() || user.DepartmentId() != DepartmentIds.Library)
+        {
+            Navigation.NavigateTo("/pending");
+            return;
+        }
+
         var definitions = await Catalog.GetItemsAsync(DepartmentIds.Library);
 
         AuditItems = definitions.Select(d => new AuditItem

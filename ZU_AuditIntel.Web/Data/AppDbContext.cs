@@ -6,6 +6,7 @@ namespace ZU_AuditIntel.Web.Data
     public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
     {
         public DbSet<Department> Departments => Set<Department>();
+        public DbSet<User> Users => Set<User>();
         public DbSet<AuditItem> AuditItems => Set<AuditItem>();
         public DbSet<AuditQuestion> Questions => Set<AuditQuestion>();
         public DbSet<AuditEvidenceRequirement> EvidenceRequirements => Set<AuditEvidenceRequirement>();
@@ -22,6 +23,20 @@ namespace ZU_AuditIntel.Web.Data
                 entity.HasMany(d => d.AuditItems)
                     .WithOne(i => i.Department)
                     .HasForeignKey(i => i.DepartmentId);
+            });
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasIndex(u => u.EmployeeId).IsUnique();
+                entity.Property(u => u.EmployeeId).HasMaxLength(50).IsRequired();
+                entity.Property(u => u.FullName).HasMaxLength(200).IsRequired();
+                entity.Property(u => u.PasswordSalt).HasMaxLength(100).IsRequired();
+                entity.Property(u => u.PasswordHash).HasMaxLength(200).IsRequired();
+                entity.Property(u => u.Role).HasConversion<string>().HasMaxLength(32);
+                entity.HasOne(u => u.Department)
+                    .WithMany()
+                    .HasForeignKey(u => u.DepartmentId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<AuditItem>(entity =>

@@ -1,7 +1,7 @@
-﻿@page "/login"
+﻿@page "/"
+@page "/login"
 @layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
-@rendermode InteractiveServer
-@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
 
 <PageTitle>تسجيل الدخول - ZU-AuditIntel</PageTitle>
 
@@ -15,38 +15,30 @@
 				<p>وحدة الاعتماد وضمان الجودة — ZU-AuditIntel</p>
 			</div>
 
-			@if (!string.IsNullOrEmpty(errorMessage))
+			@if (LoginError is not null)
 			{
 				<div class="zu-alert">
-					@errorMessage
+					@LoginError
 				</div>
 			}
 
-			<EditForm Model="loginModel" OnValidSubmit="HandleLogin" FormName="zuLoginForm">
+			<form method="post" action="/account/login">
+				<AntiforgeryField />
 
-				<!-- حقل الرقم الوظيفي / اسم المستخدم -->
+				<!-- حقل الرقم الوظيفي -->
 				<div class="zu-input-group">
 					<span class="zu-badge-label">الرقم الوظيفي </span>
-					<InputText class="zu-input" @bind-Value="loginModel.Username" placeholder="أدخل اسم المستخدم..." />
+					<input class="zu-input" type="text" name="employeeId" placeholder="أدخل رقمك الوظيفي..." autocomplete="username" />
 				</div>
 
-				<!-- حقل كلمة المرور مع زر الإظهار والإخفاء بلغة C# -->
+				<!-- حقل كلمة المرور مع زر الإظهار والإخفاء -->
 				<div class="zu-input-group">
 					<span class="zu-badge-label">كلمة المرور</span>
 					<div class="zu-password-wrapper">
-						<input type="@(showPassword ? "text" : "password")"
-							   class="zu-input"
-							   @bind="loginModel.Password"
-							   placeholder="أدخل كلمة المرور..." />
-						<button type="button" class="zu-eye-btn" @onclick="TogglePasswordVisibility" title="إظهار/إخفاء كلمة المرور">
-							@if (showPassword)
-							{
-								<span>🙈</span>
-							}
-							else
-							{
-								<span>👁️</span>
-							}
+						<input id="zu-password" class="zu-input" type="password" name="password"
+							   placeholder="أدخل كلمة المرور..." autocomplete="current-password" />
+						<button type="button" class="zu-eye-btn" onclick="toggleZuPassword(this)" title="إظهار/إخفاء كلمة المرور">
+							<span>👁️</span>
 						</button>
 					</div>
 				</div>
@@ -56,7 +48,7 @@
 				<div class="zu-forgot-wrapper">
 					<a href="#" class="zu-forgot-link">هل نسيت كلمة السر ؟</a>
 				</div>
-			</EditForm>
+			</form>
 		</div>
 
 		<!-- القسم الأيسر: الهوية البصرية لجامعة الزرقاء -->
@@ -330,31 +322,25 @@
 	}
 </style>
 
+<script>
+	function toggleZuPassword() {
+		var input = document.getElementById('zu-password');
+		input.type = input.type === 'password' ? 'text' : 'password';
+	}
+</script>
+
 @code {
-	private LoginModel loginModel = new();
-	private string? errorMessage;
-	private bool showPassword = false;
+	private string? LoginError { get; set; }
 
-	private void TogglePasswordVisibility()
+	// النموذج يُرسل إلى نقطة API ثم يُعاد التوجيه هنا مع الخطأ في سلسلة الاستعلام، فلا حالة تبقى في المكوّن.
+	protected override void OnInitialized()
 	{
-		showPassword = !showPassword;
-	}
-
-	private void HandleLogin()
-	{
-		if (loginModel.Username == "admin" && loginModel.Password == "123456")
+		LoginError = HttpContextAccessor.HttpContext?.Request.Query["error"].ToString() switch
 		{
-			Navigation.NavigateTo("/");
-		}
-		else
-		{
-			errorMessage = "الرقم الوظيفي أو كلمة المرور غير صحيحة";
-		}
-	}
-
-	public class LoginModel
-	{
-		public string Username { get; set; } = string.Empty;
-		public string Password { get; set; } = string.Empty;
+			"invalid" => "الرقم الوظيفي أو كلمة المرور غير صحيحة",
+			"denied" => "لا تملك صلاحية الوصول إلى هذه الشاشة",
+			"session" => "انتهت الجلسة، سجّل الدخول من جديد",
+			_ => null
+		};
 	}
 }

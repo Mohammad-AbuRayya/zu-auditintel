@@ -1179,6 +1179,56 @@ namespace ZU_AuditIntel.Web.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ZU_AuditIntel.Web.Models.User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DepartmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PasswordIterations")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PasswordSalt")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("EmployeeId")
+                        .IsUnique();
+
+                    b.ToTable("Users");
+                });
+
             modelBuilder.Entity("ZU_AuditIntel.Web.Models.AuditEvidenceRequirement", b =>
                 {
                     b.HasOne("ZU_AuditIntel.Web.Models.AuditItem", "AuditItem")
@@ -1210,6 +1260,16 @@ namespace ZU_AuditIntel.Web.Migrations
                         .IsRequired();
 
                     b.Navigation("AuditItem");
+                });
+
+            modelBuilder.Entity("ZU_AuditIntel.Web.Models.User", b =>
+                {
+                    b.HasOne("ZU_AuditIntel.Web.Models.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Department");
                 });
 
             modelBuilder.Entity("ZU_AuditIntel.Web.Models.AuditItem", b =>

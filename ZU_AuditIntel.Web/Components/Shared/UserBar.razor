@@ -1,0 +1,54 @@
+@* الشريط العلوي لهوية المستخدم: الاسم والرقم الوظيفي والدور مع زر الخروج. *@
+@inject NavigationManager Navigation
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 zu-user-bar">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
+            <i class="bi bi-person-badge text-primary"></i>
+            <span class="fw-semibold">@FullName</span>
+        </span>
+        <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
+            <i class="bi bi-hash text-primary"></i>
+            <span dir="ltr" class="fw-bold">@EmployeeId</span>
+        </span>
+        <span class="badge rounded-pill text-bg-primary-subtle border border-primary-subtle d-inline-flex align-items-center gap-1">
+            <i class="bi bi-shield-lock text-primary"></i>
+            @RoleLabel
+        </span>
+    </div>
+
+    <button type="button" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+            onclick="zuSignOut()">
+        <i class="bi bi-box-arrow-left"></i>
+        تسجيل الخروج
+    </button>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string FullName { get; set; } = "";
+    private string EmployeeId { get; set; } = "";
+    private string RoleLabel { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+            return;
+
+        var user = (await AuthState).User;
+        FullName = user.Identity?.Name ?? "";
+        EmployeeId = user.FindFirst(AuditClaims.EmployeeId)?.Value ?? "";
+        RoleLabel = user.RoleLabel();
+    }
+}
+
+<style>
+    .zu-user-bar {
+        background-color: #fff;
+        border: 1px solid #e9ecef;
+        border-radius: 1rem;
+        padding: .65rem 1rem;
+    }
+</style>

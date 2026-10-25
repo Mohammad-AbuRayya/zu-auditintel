@@ -15,8 +15,11 @@
 </head>
 
 <body>
-    <Routes />
+    <CascadingAuthenticationState>
+        <Routes />
+    </CascadingAuthenticationState>
     <ReconnectModal />
+    <script src="@Assets["js/audit-shell.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 
