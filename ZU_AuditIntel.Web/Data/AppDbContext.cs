@@ -1,275 +1,64 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Data
 {
-    public class AppDbContext : DbContext
+    public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
     {
-        public DbSet<Department> Departments { get; set; }
-        public DbSet<AuditItem> AuditItems { get; set; }
-
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+        public DbSet<Department> Departments => Set<Department>();
+        public DbSet<AuditItem> AuditItems => Set<AuditItem>();
+        public DbSet<AuditQuestion> Questions => Set<AuditQuestion>();
+        public DbSet<AuditEvidenceRequirement> EvidenceRequirements => Set<AuditEvidenceRequirement>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // 1. إدراج كافة الجهات والدوائر والعمادات والكليات في الجامعة
-            modelBuilder.Entity<Department>().HasData(
-                new Department { DepartmentId = "health_center", DepartmentName = "المركز الصحي" },
-                new Department { DepartmentId = "admission", DepartmentName = "دائرة القبول والتسجيل" },
-                new Department { DepartmentId = "library", DepartmentName = "دائرة المكتبة العامة" },
-                new Department { DepartmentId = "hr", DepartmentName = "دائرة الموارد البشرية" },
-                new Department { DepartmentId = "presidency", DepartmentName = "ديوان الرئاسة" },
-                new Department { DepartmentId = "student_affairs", DepartmentName = "عمادة شؤون الطلبة" },
-                new Department { DepartmentId = "it_center", DepartmentName = "مركز الحاسوب" },
-                new Department { DepartmentId = "quality_unit", DepartmentName = "وحدة التطوير وضمان الجودة" },
-                new Department { DepartmentId = "postgraduate", DepartmentName = "عمادة الدراسات العليا" },
-                new Department { DepartmentId = "faculties", DepartmentName = "الكليات الأكاديمية" },
-                new Department { DepartmentId = "scientific_research", DepartmentName = "عمادة البحث العلمي" },
-                new Department { DepartmentId = "procurement", DepartmentName = "دائرة اللوازم والمشتريات" }
-            );
+            modelBuilder.Entity<Department>(entity =>
+            {
+                entity.HasKey(d => d.DepartmentId);
+                entity.Property(d => d.DepartmentId).HasMaxLength(50);
+                entity.Property(d => d.DepartmentName).IsRequired().HasMaxLength(200);
+                entity.HasMany(d => d.AuditItems)
+                    .WithOne(i => i.Department)
+                    .HasForeignKey(i => i.DepartmentId);
+            });
 
-            // 2. إدراج بنود التدقيق الشاملة والمصنفة لكل جهة
-            modelBuilder.Entity<AuditItem>().HasData(
-                // ==========================================
-                // أ) دائرة المكتبة العامة (19 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 1,
-                    DepartmentId = "library",
-                    Category = "خاص بالمكتبة",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد للمكتبة العامة يوضح الشعب والأقسام وخطوط الإشراف ومطابقته للكادر الحالي.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع||دليل تعميمه وإعلانه للموظفين||كشف بأسماء موظفي المكتبة ومسمياتهم"
-                },
-                new AuditItem
-                {
-                    Id = 2,
-                    DepartmentId = "library",
-                    Category = "خاص بالمكتبة",
-                    Title = "الوصف الوظيفي",
-                    IsoReference = "7.2",
-                    WorkflowJson = "التحقق من وجود بطاقات وصف وظيفي معتمدة لجميع المسميات الوظيفية في المكتبة وتوقيع الموظفين عليها.",
-                    EvidencesJson = "بطاقات الوصف الوظيفي المعتمدة لكافة وظائف المكتبة||عينة 3 موظفين من نماذج استلام الوصف الوظيفي الموقعة"
-                },
-                new AuditItem
-                {
-                    Id = 3,
-                    DepartmentId = "library",
-                    Category = "خاص بالمكتبة",
-                    Title = "سياسة المكتبة",
-                    IsoReference = "5.2 / 7.1.6",
-                    WorkflowJson = "التحقق من وجود سياسة وتعليمات واضحة ومعتمدة للمكتبة العامة تنظم التزويد والإعارة واستخدام مرافق ومصادر المكتبة.",
-                    EvidencesJson = "وثيقة سياسة وتعليمات المكتبة العامة المعتمدة||الدليل الإرشادي لمستخدمي المكتبة||شواهد نشر السياسة على موقع الجامعة"
-                },
-                new AuditItem
-                {
-                    Id = 4,
-                    DepartmentId = "library",
-                    Category = "خاص بالمكتبة",
-                    Title = "ضبط الفهارس والسجلات",
-                    IsoReference = "7.1.6 / 7.5",
-                    WorkflowJson = "التحقق من ضبط فهارس المكتبة (الورقية / الإلكترونية) وكافة السجلات والنماذج المعتمدة وفق متطلبات نظام الجودة.",
-                    EvidencesJson = "القائمة الرئيسية للوثائق والسجلات المعتمدة (Master List)||شواهد ضبط وتحديث فهارس المقتنيات وسجلات التزويد والجرد"
-                },
-                new AuditItem
-                {
-                    Id = 5,
-                    DepartmentId = "library",
-                    Category = "خاص بالمكتبة",
-                    Title = "نظام إدارة المكتبة",
-                    IsoReference = "7.1.3 / 7.1.6",
-                    WorkflowJson = "التحقق من كفاءة النظام الآلي لإدارة المكتبة في الفهرسة والبحث والإعارة وإصدار التقارير الإحصائية الدقيقة.",
-                    EvidencesJson = "تقارير فنية وإحصائية مستخرجة من نظام إدارة المكتبة الآلي||شواهد عمل بوابة البحث الآلي OPAC||آلية ضبط صلاحيات النظام والنسخ الاحتياطي"
-                },
+            modelBuilder.Entity<AuditItem>(entity =>
+            {
+                entity.Property(i => i.DepartmentId).HasMaxLength(50);
+                entity.Property(i => i.Title).IsRequired().HasMaxLength(300);
+                entity.Property(i => i.IsoReference).HasMaxLength(50);
+                entity.Property(i => i.Category).HasConversion<string>().HasMaxLength(32);
+                entity.HasIndex(i => new { i.DepartmentId, i.SortOrder });
 
-                // ==========================================
-                // ب) المركز الصحي (22 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 100,
-                    DepartmentId = "health_center",
-                    Category = "خاص بالمركز الصحي",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد يحدد العيادات والتمريض والصيدلية والاستقبال وخطوط السلطة والمسؤولية.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع للمركز الصحي||كشف بأسماء الكادر الطبي والتمريضي والإداري"
-                },
-                new AuditItem
-                {
-                    Id = 101,
-                    DepartmentId = "health_center",
-                    Category = "خاص بالمركز الصحي",
-                    Title = "الوصف الوظيفي",
-                    IsoReference = "5.3 / 7.2",
-                    WorkflowJson = "التحقق من أن لكل مسمى وظيفي بطاقة وصف وظيفي معتمدة وموقعة مع سريان تراخيص مزاولة المهنة الصحية.",
-                    EvidencesJson = "بطاقات الوصف الوظيفي المعتمدة||عينة 3 موظفين (طبيب، ممرض، صيدلاني)||نسخ مزاولات المهنة السارية"
-                },
-                new AuditItem
-                {
-                    Id = 102,
-                    DepartmentId = "health_center",
-                    Category = "خاص بالمركز الصحي",
-                    Title = "السياسة الصحية",
-                    IsoReference = "5.2",
-                    WorkflowJson = "التحقق من وجود سياسة صحية وتعليمات واضحة لتقديم الرعاية الصحية والتأمين الصحي ومعلنة ومفهومة.",
-                    EvidencesJson = "وثيقة السياسة الصحية وتعليمات المركز الصحي||شواهد إعلان السياسة الصحية داخل المركز وعلى الموقع"
-                },
+                entity.HasMany(i => i.Questions)
+                    .WithOne(q => q.AuditItem)
+                    .HasForeignKey(q => q.AuditItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-                // ==========================================
-                // ج) دائرة القبول والتسجيل (25 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 200,
-                    DepartmentId = "admission",
-                    Category = "خاص بالقبول والتسجيل",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد للدائرة يوضح شعب القبول والتسجيل والوثائق ومطابقته للكادر الفعلي.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع||دليل تعميم الهيكل على موظفي الدائرة||كشف بأسماء الموظفين"
-                },
-                new AuditItem
-                {
-                    Id = 201,
-                    DepartmentId = "admission",
-                    Category = "خاص بالقبول والتسجيل",
-                    Title = "الوصف الوظيفي",
-                    IsoReference = "5.3 / 7.2",
-                    WorkflowJson = "التحقق من وجود بطاقات وصف وظيفي معتمدة لمسجلي التخصصات وموظفي القبول والوثائق وتوقيعهم بالعلم.",
-                    EvidencesJson = "بطاقات الوصف الوظيفي لكافة الوظائف||عينة 3 موظفين من نماذج استلام الوصف الوظيفي الموقعة"
-                },
+                entity.HasMany(i => i.EvidenceRequirements)
+                    .WithOne(e => e.AuditItem)
+                    .HasForeignKey(e => e.AuditItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
-                // ==========================================
-                // د) دائرة الموارد البشرية (17 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 300,
-                    DepartmentId = "hr",
-                    Category = "خاص بالمورد البشرية",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لدائرة الموارد البشرية ومطابقته للكادر الفعلي.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع||دليل تعميمه للموظفين||كشف بأسماء موظفي الدائرة"
-                },
+            modelBuilder.Entity<AuditQuestion>(entity =>
+            {
+                entity.Property(q => q.Text).IsRequired();
+                entity.HasIndex(q => new { q.AuditItemId, q.SortOrder }).IsUnique();
+            });
 
-                // ==========================================
-                // هـ) ديوان الرئاسة (12 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 400,
-                    DepartmentId = "presidency",
-                    Category = "خاص ديوان الرئاسة",
-                    Title = "تحديد الأطراف المعنية",
-                    IsoReference = "4.2",
-                    WorkflowJson = "التحقق من قيام ديوان الرئاسة بحصر كافة الجهات التي يتعامل معها وتحديد متطلبات كل جهة.",
-                    EvidencesJson = "سجل مصفوفة حصر الأطراف المعنية||آلية متابعة تلبية متطلبات الأطراف المعنية وتحديثها"
-                },
+            modelBuilder.Entity<AuditEvidenceRequirement>(entity =>
+            {
+                entity.Property(e => e.Text).IsRequired();
+                entity.HasIndex(e => new { e.AuditItemId, e.SortOrder }).IsUnique();
+            });
 
-                // ==========================================
-                // و) عمادة شؤون الطلبة (20 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 500,
-                    DepartmentId = "student_affairs",
-                    Category = "خاص شؤون الطلبة",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لعمادة شؤون الطلبة يوضح الأقسام وشعب وخطوط السلطة.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع للعمادة||دليل تعميمه للموظفين||كشف بأسماء الموظفين"
-                },
-
-                // ==========================================
-                // ز) مركز الحاسوب (18 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 600,
-                    DepartmentId = "it_center",
-                    Category = "خاص مركز الحاسوب",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لمركز الحاسوب يوضح الأقسام والشعب التقنية والبرمجية.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع لمركز الحاسوب||دليل تعميمه للموظفين"
-                },
-
-                // ==========================================
-                // ح) وحدة التطوير وضمان الجودة (16 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 700,
-                    DepartmentId = "quality_unit",
-                    Category = "خاص وحدة الجودة",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لوحدة التطوير وضمان الجودة ولجان وضباط الارتباط.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد||قرارات تشكيل مجلس الجودة وضباط الارتباط||كشف بالأسماء"
-                },
-
-                // ==========================================
-                // ط) عمادة الدراسات العليا (19 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 800,
-                    DepartmentId = "postgraduate",
-                    Category = "خاص الدراسات العليا",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لعمادة الدراسات العليا ومجلس الدراسات العليا والأقسام التابعة.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد||قرار تشكيل مجلس الدراسات العليا||كشف بأسماء كادر العمادة"
-                },
-
-                // ==========================================
-                // ي) الكليات الأكاديمية (23 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 900,
-                    DepartmentId = "faculties",
-                    Category = "خاص الكليات",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد للكلية يوضح العمادة والمجالس والأقسام الأكاديمية واللجان.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد||قرارات تشكيل مجلس الكلية ومجالس الأقسام||كشف بأعضاء الهيئة التدريسية"
-                },
-
-                // ==========================================
-                // ك) عمادة البحث العلمي (17 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 1000,
-                    DepartmentId = "scientific_research",
-                    Category = "خاص البحث العلمي",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لعمادة البحث العلمي ومجلس البحث العلمي والمجلات العلمية.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد||قرار تشكيل مجلس البحث العلمي وهيئات تحرير المجلات||كشف بالأسماء"
-                },
-
-                // ==========================================
-                // ل) دائرة اللوازم والمشتريات (20 بنداً)
-                // ==========================================
-                new AuditItem
-                {
-                    Id = 1100,
-                    DepartmentId = "procurement",
-                    Category = "خاص اللوازم والمشتريات",
-                    Title = "الهيكل التنظيمي",
-                    IsoReference = "5.3",
-                    WorkflowJson = "التحقق من وجود هيكل تنظيمي معتمد لدائرة اللوازم والمشتريات يوضح شعب الشراء والمستودعات.",
-                    EvidencesJson = "نسخة الهيكل التنظيمي المعتمد والموقع للدائرة||دليل تعميمه للموظفين||كشف بأسماء الموظفين"
-                }
-            );
+            modelBuilder.Entity<Department>().HasData(SeedData.Departments());
+            modelBuilder.Entity<AuditItem>().HasData(SeedData.AuditItems());
+            modelBuilder.Entity<AuditQuestion>().HasData(SeedData.Questions());
+            modelBuilder.Entity<AuditEvidenceRequirement>().HasData(SeedData.EvidenceRequirements());
         }
     }
 }

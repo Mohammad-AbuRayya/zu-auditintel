@@ -9,8 +9,11 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddLocalization();
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=zu_auditintel.db"));
+var connectionString = builder.Configuration.GetConnectionString("AuditIntel")
+    ?? throw new InvalidOperationException("Connection string 'AuditIntel' is not configured.");
+
+builder.Services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
+builder.Services.AddScoped<IAuditCatalog, EfAuditCatalog>();
 
 var app = builder.Build();
 

@@ -1,7 +1,7 @@
 ﻿@page "/LibraryAudit"
 @layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
 @rendermode InteractiveServer
-@inject AppDbContext Db
+@inject IAuditCatalog Catalog
 @using System.IO
 @using System.IO.Compression
 @using System.Net
@@ -639,242 +639,20 @@
         _ => AuditItems
     };
 
-    // ===================== التهيئة: البنود الـ 13 =====================
-    protected override void OnInitialized()
+    // ===================== التهيئة: تحميل بنود المكتبة من قاعدة البيانات =====================
+    protected override async Task OnInitializedAsync()
     {
-        AuditItems = new List<AuditItem>
-        {
-            // ---------- أولاً: نموذج التدقيق العام - البنود المشتركة (9 بنود) ----------
-            new AuditItem
-            {
-                Id = 1,
-                Title = "الهيكل التنظيمي",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل يوجد هيكل تنظيمي معتمد ومحدث؟",
-                    "هل يوضح خطوط السلطة والمسؤوليات؟",
-                    "هل يتم مراجعته وتعميمه دورياً؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "نسخة الهيكل المعتمد",
-                    "قرار الاعتماد",
-                    "سجل التحديثات",
-                    "تعميم داخلي"
-                }
-            },
-            new AuditItem
-            {
-                Id = 2,
-                Title = "الوصف الوظيفي",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل يوجد وصف وظيفي لكل موظف؟",
-                    "هل يتوافق مع المهام الفعلية؟",
-                    "هل يتم تحديثه بشكل دوري؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "بطاقات الوصف الوظيفي",
-                    "تواقيع الموظفين",
-                    "سجل التحديث"
-                }
-            },
-            new AuditItem
-            {
-                Id = 3,
-                Title = "ضبط الوثائق والسجلات",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل يتم تطبيق إجراء ضبط الوثائق؟",
-                    "هل يتم التحكم بالإصدارات؟",
-                    "هل يتم أرشفة الوثائق وإتاحتها؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "سجل الوثائق",
-                    "سجل الإصدارات",
-                    "طلبات تعديل الوثائق",
-                    "نظام الأرشفة"
-                }
-            },
-            new AuditItem
-            {
-                Id = 4,
-                Title = "الخطة الاستراتيجية",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل توجد خطة استراتيجية معتمدة؟",
-                    "هل تتماشى مع رؤية الجامعة؟",
-                    "هل يتم تتبع تنفيذها؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "وثيقة الخطة",
-                    "تقارير متابعة",
-                    "مؤشرات الأداء"
-                }
-            },
-            new AuditItem
-            {
-                Id = 5,
-                Title = "مؤشرات الأداء",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل توجد مؤشرات أداء واضحة؟",
-                    "هل يتم قياسها وتحليلها دورياً؟",
-                    "هل تتخذ إجراءات بناءً على النتائج؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "تقارير KPI",
-                    "تحليل الأداء",
-                    "خطط التحسين"
-                }
-            },
-            new AuditItem
-            {
-                Id = 6,
-                Title = "تحليل SWOT",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل تم إعداد تحليل SWOT؟",
-                    "هل يتم تحديثه واستخدامه في التخطيط؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "تقرير SWOT",
-                    "محاضر الاجتماعات"
-                }
-            },
-            new AuditItem
-            {
-                Id = 7,
-                Title = "إدارة المخاطر",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل تم تحديد وتقييم المخاطر؟",
-                    "هل توجد خطط معالجة ومراجعة دورية؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "سجل المخاطر",
-                    "خطة المعالجة",
-                    "تقارير المراجعة"
-                }
-            },
-            new AuditItem
-            {
-                Id = 8,
-                Title = "التدريب والكفاءة",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل توجد خطة تدريب سنوية؟",
-                    "هل يتم تنفيذها وتقييم أثرها؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "خطة تدريب",
-                    "سجلات حضور",
-                    "تقارير التقييم"
-                }
-            },
-            new AuditItem
-            {
-                Id = 9,
-                Title = "الشكاوى ورضا المستفيدين",
-                Category = ItemCategory.Common,
-                Questions = new()
-                {
-                    "هل توجد آلية فعالة للشكاوى؟",
-                    "هل يتم تحليل الشكاوى وقياس رضا المستفيدين؟",
-                    "هل تنفذ تحسينات؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "نماذج الشكاوى",
-                    "تقارير التحليل",
-                    "استبانات الرضا"
-                }
-            },
+        var definitions = await Catalog.GetItemsAsync(DepartmentIds.Library);
 
-            // ---------- ثانياً: البنود الخاصة بالمكتبة (4 بنود) ----------
-            new AuditItem
-            {
-                Id = 10,
-                Title = "نظام إدارة المكتبة",
-                Category = ItemCategory.Library,
-                Questions = new()
-                {
-                    "هل يوجد نظام مكتبة فعال؟",
-                    "هل يتم تحديثه وصيانته؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "نظام المكتبة",
-                    "تقارير الاستخدام"
-                }
-            },
-            new AuditItem
-            {
-                Id = 11,
-                Title = "الإعارة",
-                Category = ItemCategory.Library,
-                Questions = new()
-                {
-                    "هل توجد إجراءات إعارة واضحة؟",
-                    "هل يتم توثيق العمليات؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "سجلات الإعارة"
-                }
-            },
-            new AuditItem
-            {
-                Id = 12,
-                Title = "المصادر الإلكترونية",
-                Category = ItemCategory.Library,
-                Questions = new()
-                {
-                    "هل يتم تحديث الاشتراكات وقواعد البيانات؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "اشتراكات",
-                    "تقارير التحديث"
-                }
-            },
-            new AuditItem
-            {
-                Id = 13,
-                Title = "رضا المستفيدين",
-                Category = ItemCategory.Library,
-                Questions = new()
-                {
-                    "هل يتم قياس رضا المستفيدين؟",
-                    "هل تُحل الشكاوى؟"
-                },
-                RequiredEvidence = new()
-                {
-                    "اشتراكات",
-                    "تقارير التحديث"
-                }
-            }
-        };
-
-        foreach (var item in AuditItems)
+        AuditItems = definitions.Select(d => new AuditItem
         {
-            item.Checks = CreateAiChecks();
-        }
+            Id = d.Id,
+            Title = d.Title,
+            Category = d.Category == AuditItemCategory.Common ? ItemCategory.Common : ItemCategory.Library,
+            Questions = [.. d.Questions],
+            RequiredEvidence = [.. d.RequiredEvidence],
+            Checks = CreateAiChecks()
+        }).ToList();
     }
 
     // ===================== اختيار البند =====================
