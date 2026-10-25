@@ -54,16 +54,15 @@
 		<!-- القسم الأيسر: الهوية البصرية لجامعة الزرقاء -->
 		<div class="zu-brand-section">
 
-			<!-- صورة شعار ISO 21001 -->
-			<div class="zu-brand-logo-wrapper">
-				<img src="/images/logo.jpg" alt="ISO 21001" class="zu-brand-logo" />
-			</div>
-			<div class="zu-brand-logo-wrapper">
-				<img src="/images/zarqa-logo.jpeg" alt="جامعة الزرقاء" class="zu-brand-logo" />
+			<h1 class="zu-brand-university">جامعة الزرقاء</h1>
+
+			<!-- شعار الجامعة الدائري مع شعار ISO متداخلاً على زاويته اليسرى -->
+			<div class="zu-brand-crest">
+				<img src="/images/zu-logo.png" alt="شعار جامعة الزرقاء" class="zu-crest-university" />
+				<img src="/images/iso-21001.jpeg" alt="شعار ISO 21001" class="zu-crest-iso" />
 			</div>
 
 			<div class="zu-brand-titles">
-				<h1>جامعة الزرقاء</h1>
 				<h3>بوابة التدقيق والجودة الذكية</h3>
 				<p>نظام مؤتمت متعدد الوكلاء لمطابقة معايير الجودة الأكاديمية والإدارية</p>
 			</div>
@@ -253,34 +252,48 @@
 		overflow: hidden;
 	}
 
-	/* تنسيق الشعار الجديد */
-	.zu-brand-logo-wrapper {
-		margin-bottom: 22px;
+	/* الاسم فوق الشعار: الدائرة تحمل الاسم منحنياً داخلها، فوضعه بجانبها يكرّر النص ويصطدم بحافتها */
+	.zu-brand-university {
+		font-size: 1.7rem;
+		font-weight: 800;
+		letter-spacing: .5px;
+		margin: 0 0 20px;
 		z-index: 2;
-		display: flex;
-		justify-content: center;
-		align-items: center;
 	}
 
-	.zu-brand-logo {
-		width: 155px;
-		height: 155px;
+	.zu-brand-crest {
+		position: relative;
+		width: 196px;
+		height: 196px;
+		margin-bottom: 28px;
+		z-index: 2;
+	}
+
+	.zu-crest-university {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		filter: drop-shadow(0 14px 26px rgba(0, 0, 0, .3));
+	}
+
+	/* شارة ISO أصغر ومتداخلة على الزاوية اليسرى للشعار */
+	.zu-crest-iso {
+		position: absolute;
+		left: -24px;
+		bottom: -4px;
+		width: 84px;
+		height: 84px;
 		object-fit: contain;
 		background-color: #ffffff;
-		padding: 12px;
-		border-radius: 24px;
-		box-shadow: 0 10px 25px rgba(0, 0, 0, 0.18);
+		border: 3px solid #ffffff;
+		border-radius: 50%;
+		padding: 5px;
+		box-shadow: 0 8px 20px rgba(0, 0, 0, .28);
 	}
 
 	.zu-brand-titles {
 		z-index: 2;
 	}
-
-		.zu-brand-titles h1 {
-			font-size: 2rem;
-			font-weight: 800;
-			margin-bottom: 6px;
-		}
 
 		.zu-brand-titles h3 {
 			font-size: 1.25rem;
@@ -318,6 +331,25 @@
 
 		.zu-brand-section {
 			padding: 30px 20px;
+		}
+
+		.zu-brand-university {
+			font-size: 1.4rem;
+			margin-bottom: 16px;
+		}
+
+		.zu-brand-crest {
+			width: 158px;
+			height: 158px;
+			margin-bottom: 22px;
+		}
+
+		.zu-crest-iso {
+			left: -18px;
+			bottom: -2px;
+			width: 66px;
+			height: 66px;
+			padding: 4px;
 		}
 	}
 </style>
