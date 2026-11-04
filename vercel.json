@@ -1,5 +1,6 @@
 {
-  "cleanUrls": true,
+  "buildCommand": "dotnet publish -c Release -o output",
+  "outputDirectory": "output/wwwroot",
   "rewrites": [
     {
       "source": "/(.*)",
