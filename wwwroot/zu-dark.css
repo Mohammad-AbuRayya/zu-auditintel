@@ -1,0 +1,446 @@
+/* المظهر الليلي. يُفعَّل بالصنف data-bs-theme="dark" على <html>، وتُكتب هنا التغلبات على الأسطح الفاتحة
+   المكتوبة يدوياً: Bootstrap 5.3 يقلب المتغيّرات وحده، أما bg-white وbg-light وtable-light والنصوص المقروءة
+   بألوان ثابتة في بقيّة الملفات فتحتاج قلباً صريحاً. */
+html[data-bs-theme="dark"] body {
+    background-color: #0f1523;
+    color: #dbe4f0;
+}
+
+/* أدوات Bootstrap الفاتحة المستعملة في اللوحات */
+html[data-bs-theme="dark"] .bg-white {
+    background-color: #17202f !important;
+}
+
+html[data-bs-theme="dark"] .bg-light,
+html[data-bs-theme="dark"] .text-bg-light {
+    background-color: #1d283a !important;
+    color: #dbe4f0 !important;
+}
+
+html[data-bs-theme="dark"] .text-dark {
+    color: #e8edf5 !important;
+}
+
+html[data-bs-theme="dark"] .text-primary {
+    color: #7ab3ff !important;
+}
+
+html[data-bs-theme="dark"] a,
+html[data-bs-theme="dark"] .btn-link {
+    color: #7ab3ff;
+}
+
+html[data-bs-theme="dark"] .card {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .table {
+    --bs-table-bg: #17202f;
+    --bs-table-color: #dbe4f0;
+    --bs-table-hover-bg: #1d283a;
+    --bs-table-hover-color: #f0f5fb;
+    --bs-table-border-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .table-light > :not(caption) > * > * {
+    background-color: #1d283a;
+    color: #e8edf5;
+}
+
+html[data-bs-theme="dark"] .progress {
+    background-color: #1d283a;
+}
+
+html[data-bs-theme="dark"] .btn-outline-secondary {
+    color: #b6c4d6;
+    border-color: #3a4a63;
+}
+
+    html[data-bs-theme="dark"] .btn-outline-secondary:hover {
+        background-color: #1d283a;
+        color: #f0f5fb;
+        border-color: #52627b;
+    }
+
+html[data-bs-theme="dark"] .form-control,
+html[data-bs-theme="dark"] .form-select {
+    background-color: #131c2b;
+    color: #dbe4f0;
+    border-color: #2b3a52;
+}
+
+/* الشريط الجانبي وبطاقة الهوية */
+html[data-bs-theme="dark"] .zu-board-side {
+    background-color: #121a29;
+    border-left-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .zu-side-group,
+html[data-bs-theme="dark"] .zu-side-toggle {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .zu-side-item {
+    color: #c7d3e3;
+}
+
+    html[data-bs-theme="dark"] .zu-side-item:hover,
+    html[data-bs-theme="dark"] .zu-side-toggle:hover {
+        background-color: #1d283a;
+        color: #7ab3ff;
+    }
+
+    html[data-bs-theme="dark"] .zu-side-item.zu-side-plain:hover {
+        background-color: transparent;
+        color: #c7d3e3;
+    }
+
+html[data-bs-theme="dark"] .zu-side-value {
+    background-color: #1d283a;
+    color: #94a6bd;
+}
+
+html[data-bs-theme="dark"] .zu-side-danger {
+    color: #f1aeb5;
+}
+
+    html[data-bs-theme="dark"] .zu-side-danger:hover {
+        background-color: #34212a;
+        color: #ffb3ba;
+    }
+
+html[data-bs-theme="dark"] .zu-identity-avatar {
+    background-color: #1b2a44;
+    border-color: #26334a;
+    color: #7ab3ff;
+}
+
+html[data-bs-theme="dark"] .zu-identity-name {
+    color: #e8edf5;
+}
+
+html[data-bs-theme="dark"] .zu-identity-dept {
+    color: #7ab3ff;
+}
+
+/* صفحات اللوحات */
+html[data-bs-theme="dark"] .zu-audit-page,
+html[data-bs-theme="dark"] .zu-pending-page {
+    background-color: #0f1523;
+}
+
+html[data-bs-theme="dark"] .zu-dropzone {
+    border-color: #2b4a76;
+    background-color: #131f31;
+}
+
+    html[data-bs-theme="dark"] .zu-dropzone:hover,
+    html[data-bs-theme="dark"] .zu-dropzone.drag-over {
+        border-color: #7ab3ff;
+        background-color: #16263d;
+    }
+
+    html[data-bs-theme="dark"] .zu-dropzone .zu-dropzone-icon {
+        color: #7ab3ff;
+    }
+
+html[data-bs-theme="dark"] .zu-evidence {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+    html[data-bs-theme="dark"] .zu-evidence.done {
+        background-color: #142823;
+        border-color: #2a5d46;
+    }
+
+/* صناديق الأدلة القابلة للتحديد وصناديق ملفات البند في لوحة الجهة */
+html[data-bs-theme="dark"] .zu-ev-check {
+    background-color: #10222b;
+    border-color: #245c6b;
+    color: #7dd3fc;
+}
+
+    html[data-bs-theme="dark"] .zu-ev-check.disabled {
+        background-color: #16202f;
+        border-color: #26334a;
+        color: #8fa5bd;
+    }
+
+    html[data-bs-theme="dark"] .zu-ev-check.zu-ev-verified {
+        background-color: #12241d;
+        border-color: #2a5d46;
+        color: #6ee7b7;
+    }
+
+html[data-bs-theme="dark"] .zu-zone {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+    html[data-bs-theme="dark"] .zu-zone .zu-zone-title {
+        color: #c7d3e3;
+    }
+
+    html[data-bs-theme="dark"] .zu-zone .list-group-item {
+        border-color: rgba(226, 232, 240, .08);
+    }
+
+    html[data-bs-theme="dark"] .zu-zone .text-muted {
+        color: #8fa5bd !important;
+    }
+
+    /* سبب الرفض مكتوب بـ text-danger الثابت، وفي الليلي يضيع على الأحمر الداكن */
+    html[data-bs-theme="dark"] .zu-zone .text-danger {
+        color: #fca5a5 !important;
+    }
+
+html[data-bs-theme="dark"] .zu-zone-rejected {
+    background-color: #2a1418;
+    border-color: #5c2b34;
+}
+
+    html[data-bs-theme="dark"] .zu-zone-rejected .zu-zone-title {
+        color: #f1aeb5;
+    }
+
+html[data-bs-theme="dark"] .zu-zone-approved {
+    background-color: #12241d;
+    border-color: #2a5d46;
+}
+
+    html[data-bs-theme="dark"] .zu-zone-approved .zu-zone-title {
+        color: #6ee7b7;
+    }
+
+html[data-bs-theme="dark"] .zu-zone-closed {
+    background-color: #102621;
+    border-color: #246b52;
+}
+
+    html[data-bs-theme="dark"] .zu-zone-closed .zu-zone-title {
+        color: #5eead4;
+    }
+
+html[data-bs-theme="dark"] .zu-merge-card {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .zu-merge-title {
+    color: #e8edf5;
+}
+
+html[data-bs-theme="dark"] .zu-merge-sec {
+    color: #c7d3e3;
+}
+
+html[data-bs-theme="dark"] .zu-merge-count {
+    background-color: #1b2a44;
+    color: #7ab3ff;
+}
+
+/* «المطلوب:» تحت رمز الآيزو يُقلب سطحه وحدّه مع البطاقة، كما كان صندوق الشرح */
+html[data-bs-theme="dark"] .zu-required {
+    background-color: #0e2531;
+    border-color: #164e63;
+}
+
+html[data-bs-theme="dark"] .zu-required-label {
+    color: #22d3ee;
+}
+
+html[data-bs-theme="dark"] .zu-required-text {
+    color: #7dd3fc;
+}
+
+html[data-bs-theme="dark"] .zu-merge-notes p {
+    background-color: #0e2531;
+    border-color: #164e63;
+    color: #7dd3fc;
+}
+
+html[data-bs-theme="dark"] .zu-section-title {
+    color: #94a6bd;
+}
+
+/* تحديد البند للرفع: سطح البطاقة الداكن يستقبل حدود التحديد الأخضر كما يستقبلها النهاري */
+html[data-bs-theme="dark"] .zu-pick {
+    background-color: #131c2b;
+    border-color: #2b3a52;
+}
+
+html[data-bs-theme="dark"] .zu-pick.zu-picked {
+    background-color: #0e1f18;
+    border-color: #1f7a4d;
+}
+
+html[data-bs-theme="dark"] .zu-pick-label {
+    color: #cbd5e1;
+}
+
+html[data-bs-theme="dark"] .zu-pick-hint {
+    color: #8496ad;
+}
+
+html[data-bs-theme="dark"] .zu-pick-chip {
+    background-color: #14352a;
+    color: #6ee7b7;
+}
+
+html[data-bs-theme="dark"] .zu-pending-icon,
+html[data-bs-theme="dark"] .zu-board-icon {
+    background-color: #1b2a44;
+    color: #7ab3ff;
+}
+
+html[data-bs-theme="dark"] .zu-review-icon {
+    background-color: #143226;
+    color: #5fd39a;
+}
+
+/* شاشة التدقيق النهائي: سطور الملفات وأسماء الجهات في جدول الإحصائيات */
+html[data-bs-theme="dark"] .zu-review-page {
+    background-color: #0f1523;
+}
+
+html[data-bs-theme="dark"] .zu-file-row {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .zu-dept-link {
+    color: #7ab3ff;
+}
+
+/* شاشة النتيجة النهائية: خلفية الصفحة وسطر البند المفتوح ورمز البند */
+html[data-bs-theme="dark"] .zu-reg-page {
+    background-color: #0f1523;
+}
+
+html[data-bs-theme="dark"] .zu-reg-detail {
+    background-color: #131f31;
+}
+
+html[data-bs-theme="dark"] .zu-reg-code {
+    background: rgba(13, 110, 253, .22);
+    color: #8ab4f8;
+}
+
+html[data-bs-theme="dark"] .zu-item-row {
+    background-color: #17202f;
+    border-color: #26334a;
+}
+
+    html[data-bs-theme="dark"] .zu-item-row.open {
+        /* الثلاثة فقط، كما في الفاتح: فحد الحالة على بداية الصندوق يبقى بلونه وهو مفتوح */
+        border-top-color: #3d6ea8;
+        border-bottom-color: #3d6ea8;
+        border-left-color: #3d6ea8;
+        box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .45);
+    }
+
+/* لون الحالة على حدّ البند يُقرأ في الليل كما يُقرأ في النهار */
+html[data-bs-theme="dark"] .zu-item-row.zu-inwork {
+    border-right-color: #d99a00;
+}
+
+html[data-bs-theme="dark"] .zu-item-row.zu-awaiting {
+    border-right-color: #4d9bff;
+}
+
+html[data-bs-theme="dark"] .zu-item-row.zu-rejected {
+    border-right-color: #ff6b78;
+}
+
+html[data-bs-theme="dark"] .zu-item-row.zu-closed,
+html[data-bs-theme="dark"] .zu-item-row.zu-approved {
+    border-right-color: #3dd68c;
+}
+
+/* صندوق البند الذي لم يُرفع له شيء مسطّح في الفاتح، فيُقلَب سطحه وحدّه معه */
+html[data-bs-theme="dark"] .zu-item-row.zu-none,
+html[data-bs-theme="dark"] .zu-item-row.zu-notuploaded {
+    background-color: #131c2b;
+    border-right-color: #2b3a52;
+}
+
+html[data-bs-theme="dark"] .zu-item-head:hover:not(:disabled) {
+    background-color: rgba(122, 179, 255, .08);
+}
+
+html[data-bs-theme="dark"] .zu-item-iso {
+    color: #7ab3ff;
+    background: rgba(122, 179, 255, .12);
+    border-color: rgba(122, 179, 255, .3);
+}
+
+html[data-bs-theme="dark"] .zu-file-details,
+html[data-bs-theme="dark"] .zu-file-reject {
+    border-top-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .zu-file-main:hover {
+    background-color: rgba(122, 179, 255, .08);
+}
+
+/* شاشات الدخول وتغيير كلمة المرور: تصل إليها الروابط من نفس الشريط، فتنقلب أسطحها معه */
+html[data-bs-theme="dark"] .zu-pw-wrapper {
+    background-color: #0f1523;
+}
+
+html[data-bs-theme="dark"] .zu-pw-card,
+html[data-bs-theme="dark"] .zu-login-card,
+html[data-bs-theme="dark"] .zu-form-section {
+    background-color: #17202f;
+}
+
+html[data-bs-theme="dark"] .zu-pw-header h2,
+html[data-bs-theme="dark"] .zu-form-header h2 {
+    color: #7ab3ff;
+}
+
+html[data-bs-theme="dark"] .zu-pw-header p,
+html[data-bs-theme="dark"] .zu-form-header p {
+    color: #94a6bd;
+}
+
+html[data-bs-theme="dark"] .zu-pw-label {
+    color: #c7d3e3;
+}
+
+html[data-bs-theme="dark"] .zu-pw-input {
+    background-color: #131c2b;
+    border-color: #2b3a52;
+    color: #dbe4f0;
+}
+
+html[data-bs-theme="dark"] .zu-input {
+    background-color: #131c2b;
+    border-color: #2b3a52;
+    color: #dbe4f0;
+}
+
+    html[data-bs-theme="dark"] .zu-input:focus {
+        background-color: #131c2b;
+        border-color: #7ab3ff;
+    }
+
+html[data-bs-theme="dark"] .zu-pw-note {
+    background-color: #2b2517;
+    border-color: #5a4b1c;
+    color: #f0d78a;
+}
+
+html[data-bs-theme="dark"] .zu-pw-error,
+html[data-bs-theme="dark"] .zu-alert {
+    background-color: #34212a;
+    border-color: #5c2b34;
+    color: #f1aeb5;
+}
+
+html[data-bs-theme="dark"] .zu-forgot-link {
+    color: #7ab3ff;
+}

@@ -1,0 +1,15 @@
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <div dir="@Ui.Dir" class="p-4">
+                    <div class="alert alert-warning rounded-4">
+                        @T("جلسة العمل منتهية أو لا تملك صلاحية الوصول إلى هذه الشاشة.")
+                        <a href="/login" class="alert-link">@T("تسجيل الدخول من جديد")</a>
+                    </div>
+                </div>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>

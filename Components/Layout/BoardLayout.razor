@@ -1,0 +1,106 @@
+@* تخطيط اللوحات: شريط ثابت على يمين الشاشة فيه هوية المستخدم، ثم أزرار التنقل، ثم إعدادات الحساب.
+   التخطيط يُعرض خارج منطقة التفاعل، فأزرار الطي والإضاءة والخروج تعمل بـ JavaScript مباشرة
+   لا بأحداث Blazor. *@
+@using System.Security.Claims
+@inherits LayoutComponentBase
+@inject INotificationStore Notifications
+@inject IMessageStore Messages
+@inject NavigationManager Navigation
+
+<div dir="@Ui.Dir" class="zu-board-shell">
+    <aside class="zu-board-side">
+        <button type="button" class="zu-side-toggle" onclick="zuToggleSide()" title="@T("طيّ الشريط الجانبي أو فتحه")">
+            <i class="bi bi-list"></i>
+        </button>
+
+        <UserBar />
+
+        @* بطاقة واحدة تضم كل الأزرار من الصفحة الرئيسية حتى تسجيل الخروج. *@
+        <div class="zu-side-group">
+            <AuthorizeView>
+                <Authorized>
+                    @* أول ثلاثة أزرار: البيت الذي يهبط عليه صاحب الحساب، ثم ما وصل إليه، ثم شرح النظام. *@
+                    <a class="zu-side-item" href="@context.User.LandingUrl()" title="@T("الصفحة الرئيسية")">
+                        <i class="bi bi-house-door"></i><span>@T("الصفحة الرئيسية")</span>
+                    </a>
+
+                    <a class="zu-side-item" href="/notifications" title="@T("الإشعارات")">
+                        <i class="bi bi-bell"></i><span>@T("الإشعارات")</span>
+                        @if (UnreadCount > 0)
+                        {
+                            <b class="zu-side-badge">@UnreadCount</b>
+                        }
+                    </a>
+
+                    <a class="zu-side-item" href="/messages" title="@T("الرسائل")">
+                        <i class="bi bi-chat-dots"></i><span>@T("الرسائل")</span>
+                        @if (UnreadMessages > 0)
+                        {
+                            <b class="zu-side-badge">@UnreadMessages</b>
+                        }
+                    </a>
+
+                    <a class="zu-side-item" href="/help" title="@T("شرح توضيحي")">
+                        <i class="bi bi-info-circle"></i><span>@T("شرح توضيحي")</span>
+                    </a>
+                </Authorized>
+            </AuthorizeView>
+
+            <button type="button" class="zu-side-item" onclick="zuToggleLanguage()"
+                    title="@T("تبديل لغة الموقع: العربية والإنجليزية")">
+                <i class="bi bi-translate"></i><span>@T("لغة الموقع")</span>
+                <b class="zu-side-value">@(Ui.IsEnglish ? "English" : "العربية")</b>
+            </button>
+
+            <button type="button" class="zu-side-item" onclick="zuToggleTheme()" title="@T("تبديل إضاءة الموقع بين النهاري والليلي")">
+                <i class="bi bi-sun zu-theme-sun"></i><i class="bi bi-moon-stars zu-theme-moon"></i>
+                <span>@T("إضاءة الموقع")</span>
+                <b class="zu-side-value zu-val-day">@T("نهاري")</b><b class="zu-side-value zu-val-night">@T("ليلي")</b>
+            </button>
+
+            <a class="zu-side-item" href="/account/change-password" title="@T("تغيير كلمة المرور")">
+                <i class="bi bi-key"></i><span>@T("تغيير كلمة المرور")</span>
+            </a>
+
+            <button type="button" class="zu-side-item zu-side-danger" onclick="zuSignOut()" title="@T("تسجيل الخروج")">
+                <i class="bi bi-box-arrow-left zu-ico-wide"></i><i class="bi bi-door-open zu-ico-narrow"></i>
+                <span>@T("تسجيل الخروج")</span>
+            </button>
+        </div>
+    </aside>
+
+    <main class="zu-board-main">
+        @Body
+    </main>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>ما لم يقرأه صاحب الحساب بعد: الرقم بجانب زر الإشعارات في كل شاشة.</summary>
+    private int UnreadCount { get; set; }
+
+    /// <summary>الرسائل التي وصلته ولم يقرأها: الرقم بجانب زر الرسائل.</summary>
+    private int UnreadMessages { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null)
+            return;
+
+        var user = (await AuthState).User;
+        if (user.Identity?.IsAuthenticated != true)
+            return;
+
+        var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+
+        // الصفحة نفسها تُعلّم إشعاراتها مقروءة عند فتحها، فلا يبقى رقمها القديم بجانب زرها.
+        if (!path.StartsWith("notifications", StringComparison.OrdinalIgnoreCase))
+            UnreadCount = await Notifications.CountUnreadAsync(NotificationViewer.From(user));
+
+        // وصفحة الرسائل تقرأ المحادثة المفتوحة، فلا تُعرض شارةٌ بعددٍ لم يعد صحيحاً وهو يقرأها.
+        if (!path.StartsWith("messages", StringComparison.OrdinalIgnoreCase))
+            UnreadMessages = await Messages.CountUnreadAsync(user.FindFirstValue(AuditClaims.EmployeeId) ?? "");
+    }
+}

@@ -1,0 +1,20 @@
+@* حقل الرمز المضاد لتزييف الطلبات، للاستعمال داخل نماذج HTML عادية في العرض الثابت. *@
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IAntiforgery Antiforgery
+@inject Microsoft.Extensions.Options.IOptions<AntiforgeryOptions> Options
+
+<input type="hidden" name="@FieldName" value="@RequestToken" />
+
+@code {
+    private string FieldName { get; set; } = "";
+    private string? RequestToken { get; set; }
+
+    protected override void OnInitialized()
+    {
+        var http = HttpContextAccessor.HttpContext
+            ?? throw new InvalidOperationException("رمز مضاد للتزييف يتطلب طلب HTTP؛ المكوّن لا يعمل داخل دائرة تفاعلية.");
+
+        FieldName = Options.Value.FormFieldName;
+        RequestToken = Antiforgery.GetAndStoreTokens(http).RequestToken;
+    }
+}

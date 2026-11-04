@@ -1,0 +1,199 @@
+/* الشريط الجانبي عمود ثابت على يمين الشاشة في كل المقاسات وفي اللغتين: لا ينفرد فوق المحتوى ولا يغيّر شكله عند تصغير النافذة.
+   الشريط يُثبَّت بالحافة اليمنى الفعلية (right) والمحتوى يُزاح بمقدار عرضه من جهة اليمين، فلا ينقله لسان تبديل اللغة. */
+.zu-board-shell {
+    min-height: 100vh;
+    padding: 1rem;
+    padding-right: 285px;
+}
+
+html.zu-side-collapsed .zu-board-shell {
+    padding-right: 101px;
+}
+
+.zu-board-side {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 1030;
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 12px;
+    background: #f8fafc;
+    border-left: 1px solid #e2e8f0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* الشريط يبقى قابلاً للتمرير، لكن بلا شريط تمرير ظاهر يأكل من عرض الأزرار. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.zu-board-side::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
+.zu-board-main {
+    min-width: 0;
+}
+
+/* الزرار ملتصق بزاوية الشريط فلا يُحسب عنصراً قبل صورة المستخدم. */
+.zu-side-toggle {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    background: #fff;
+    color: #334155;
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+    .zu-side-toggle:hover {
+        border-color: #9ec5fe;
+        color: #0d6efd;
+    }
+
+.zu-side-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 16px;
+    padding: 10px;
+}
+
+.zu-side-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    border-radius: 10px;
+    padding: 9px;
+    font-size: .88rem;
+    font-weight: 600;
+    color: #334155;
+    /* البداية تتبع اتجاه الصفحة: في العربية يميناً وفي الإنجليزية يساراً، والشريط نفسه يبقى على يمين الشاشة. */
+    text-align: start;
+    text-decoration: none;
+}
+
+    .zu-side-item:hover {
+        background: #f1f5f9;
+        color: #0d6efd;
+    }
+
+    .zu-side-item i {
+        font-size: 1.1rem;
+        flex: none;
+    }
+
+/* رقم ما لم يُقرأ بجانب زر الإشعارات، ويأخذ الحافة البعيدة كقيمة اللغة والإضاءة. */
+.zu-side-badge {
+    margin-inline-start: auto;
+    min-width: 24px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #dc3545;
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 800;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.zu-side-value {
+    margin-inline-start: auto;
+    font-size: .74rem;
+    font-weight: 700;
+    color: #64748b;
+    background: #f1f5f9;
+    border-radius: 999px;
+    padding: 3px 10px;
+}
+
+.zu-side-danger {
+    color: #b02a37;
+}
+
+    .zu-side-danger:hover {
+        background: #fdf1f2;
+        color: #842029;
+    }
+
+/* أيقونة الخروج: باب مفتوح بدل السهم عندما لا يبقى مكان للكتابة. */
+.zu-ico-narrow {
+    display: none;
+}
+
+/* السمة تحكم أيقونة الإضاءة وقيمتها معاً، فلا حاجة إلى مزامنة النص بالجافاسكربت. */
+.zu-theme-moon,
+.zu-val-night {
+    display: none;
+}
+
+html[data-bs-theme="dark"] .zu-board-side .zu-theme-sun,
+html[data-bs-theme="dark"] .zu-board-side .zu-val-day {
+    display: none;
+}
+
+html[data-bs-theme="dark"] .zu-board-side .zu-theme-moon,
+html[data-bs-theme="dark"] .zu-board-side .zu-val-night {
+    display: inline-block;
+}
+
+/* الشريط مطويّ: أيقونات فقط، والنص يظهر تلميحاً عند المرور. آخر الملف ليغلب قواعد السمة بالترتيب. */
+html.zu-side-collapsed .zu-board-side {
+    width: 76px;
+    padding: 12px 8px;
+    align-items: center;
+}
+
+    html.zu-side-collapsed .zu-board-side .zu-side-toggle {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+html.zu-side-collapsed .zu-board-side .zu-side-item span,
+html.zu-side-collapsed .zu-board-side .zu-side-value {
+    display: none;
+}
+
+html.zu-side-collapsed .zu-side-group {
+    width: 100%;
+    padding: 8px 6px;
+}
+
+html.zu-side-collapsed .zu-side-item {
+    justify-content: center;
+    padding: 10px 0;
+}
+
+html.zu-side-collapsed .zu-ico-wide {
+    display: none;
+}
+
+html.zu-side-collapsed .zu-ico-narrow {
+    display: inline-block;
+}
+
+/* الشريط مطويّ: الرقم يصير نقطةً صغيرة في زاوية الأيقونة، فلا يزيد عرض العمود. */
+html.zu-side-collapsed .zu-board-side .zu-side-badge {
+    position: absolute;
+    top: 3px;
+    inset-inline-end: 3px;
+    margin-inline-start: 0;
+    min-width: 18px;
+    padding: 0 5px;
+    font-size: .62rem;
+}

@@ -1,0 +1,35 @@
+@* ترويسة موحّدة لكل صفحات اللوحات: شعار الجامعة، ثم اسم النظام واسمه الإنجليزي، ثم عنوان الصفحة.
+   لا شارات ولا نصوص توضيحية هنا؛ ونسبة الإنجاز تُمرَّر من الصفحة التي لها نسبة. *@
+
+<div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+    <div class="zu-page-header-strip"></div>
+    <div class="card-body p-4">
+        <div class="row g-4 align-items-center">
+            <div class="col-lg-7">
+                <div class="d-flex align-items-center gap-3">
+                    <img class="zu-page-header-logo" src="/images/zu-logo.png" alt="@T("شعار جامعة الزرقاء")" />
+                    <div>
+                        @* بلا dir=ltr: الاسم يبدأ من جهة بداية الصفحة، فيقع في العربية على اليمين. *@
+                        <div class="h4 fw-bold mb-0 text-primary">ZU-AuditIntel</div>
+                        <div class="small text-muted">Zarqa University Internal Quality Audit System</div>
+                        <!-- <div class="small text-muted">نظام التدقيق الداخلي للجودة في جامعة الزرقاء</div> -->
+                        <h1 class="h5 fw-bold mt-2 mb-0 text-dark">@Title</h1>
+                    </div>
+                </div>
+            </div>
+            @if (ChildContent is not null)
+            {
+                <div class="col-lg-5">@ChildContent</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    /// <summary>عمود نسبة الإنجاز أو أي شارة تخص الصفحة؛ صفحة بلا نسبة لا تمرّر شيئاً.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

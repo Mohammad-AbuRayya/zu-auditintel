@@ -1,0 +1,1068 @@
+@page "/review"
+@page "/review/{DepartmentId}"
+@layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AuthorizationPolicies.CanReviewBoard)]
+@inject IEvidenceStore Store
+@inject IAuditCatalog Catalog
+@inject NavigationManager Navigation
+@using ZU_AuditIntel.Web.Endpoints
+@using System.Globalization
+
+<PageTitle>@SheetTitle</PageTitle>
+
+<style>
+    .zu-review-page {
+        background-color: #f8f9fa;
+        min-height: 100%;
+    }
+
+    .zu-stat-icon {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+    }
+
+    .zu-progress {
+        height: 14px;
+    }
+
+    /* خانة البحث عن جهة أو بند أو رمز آيزو: تُدفع إلى الطرف الآخر من سطر العنوان. */
+    .zu-stats-search {
+        flex: 0 1 320px;
+        min-width: 220px;
+        margin-inline-start: auto;
+    }
+
+    /* البنود التي جذبت جهتها إلى الجدول، تحت اسمها: سطرٌ يلتفّ ولا يمدّ عمود الجهة. */
+    .zu-stats-match {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0 10px;
+    }
+
+    /* صندوق الملف: صفٌّ واحد — الاسم في جهة البداية، الأزرار في الوسط، الحالة في الطرف — ثم تفاصيل تُفتح بالضغط */
+    .zu-file-row {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 10px 14px;
+    }
+
+    .zu-file-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        gap: 8px 14px;
+    }
+
+    .zu-file-main {
+        justify-self: start;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        max-width: 100%;
+        margin-inline-start: -6px;
+        padding: 4px 6px;
+        border: 0;
+        border-radius: 10px;
+        background: none;
+        text-align: start;
+        color: inherit;
+    }
+
+        .zu-file-main:hover {
+            background-color: rgba(13, 110, 253, .06);
+        }
+
+        .zu-file-main:focus-visible {
+            outline: 2px solid rgba(13, 110, 253, .55);
+            outline-offset: 2px;
+        }
+
+    .zu-file-icon {
+        font-size: 1.55rem;
+        line-height: 1;
+        flex: none;
+    }
+
+    .zu-file-name {
+        font-size: .95rem;
+        font-weight: 700;
+        color: var(--bs-emphasis-color);
+        overflow-wrap: anywhere;
+        min-width: 0;
+    }
+
+    .zu-file-actions {
+        justify-self: center;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .zu-file-state {
+        justify-self: end;
+        text-align: end;
+    }
+
+        .zu-file-state .badge {
+            white-space: nowrap;
+        }
+
+    .zu-file-reject,
+    .zu-file-details {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #e2e8f0;
+    }
+
+    /* التفاصيل: الحجم والتواريخ في شبكة، ثم الرفع والتوقيع، ثم ما رصده الوكيل */
+    .zu-file-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px 16px;
+    }
+
+    .zu-file-meta-label {
+        font-size: .75rem;
+        font-weight: 700;
+        color: var(--bs-secondary-color);
+    }
+
+    .zu-file-meta-value {
+        font-size: .92rem;
+        font-weight: 700;
+        color: var(--bs-emphasis-color);
+        overflow-wrap: anywhere;
+    }
+
+    .zu-findings {
+        white-space: pre-line;
+        font-size: .85rem;
+        max-height: 12rem;
+        overflow-y: auto;
+    }
+
+    .zu-dept-link {
+        background: none;
+        border: 0;
+        padding: 0;
+        font-weight: 600;
+        color: #0d6efd;
+        text-align: right;
+    }
+
+        .zu-dept-link:hover {
+            text-decoration: underline;
+        }
+
+    /* الأرقام في جدول الإحصائيات هي أداة التحكم: كل رقم يفتح بنود الجهة في خانته */
+    .zu-stat-cell {
+        background: none;
+        border: 0;
+        padding: 2px;
+        line-height: 1;
+        border-radius: 999px;
+    }
+
+        .zu-stat-cell:hover:not(:disabled) {
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, .18);
+        }
+
+        .zu-stat-cell:disabled {
+            opacity: .55;
+        }
+
+        .zu-stat-cell.active {
+            box-shadow: 0 0 0 3px rgba(13, 110, 253, .55);
+        }
+
+    /* صندوق البند: عنوانه واضح لا باهت، ورمزه، وعدد ملفاته، وحالته من أربع. */
+    .zu-item-row {
+        border: 1px solid #e2e8f0;
+        border-right: 5px solid #cbd5e1;
+        border-radius: 16px;
+        background-color: #fff;
+    }
+
+        .zu-item-row.zu-awaiting {
+            border-right-color: #0d6efd;
+        }
+
+        .zu-item-row.zu-rejected {
+            border-right-color: #dc3545;
+        }
+
+        .zu-item-row.zu-approved {
+            border-right-color: #198754;
+        }
+
+        .zu-item-row.zu-notuploaded {
+            background-color: #f8f9fa;
+            border-right-color: #dee2e6;
+        }
+
+        .zu-item-row.open {
+            /* الثلاثة فقط، فحد الحالة الأيمن على بداية الصندوق يبقى بلونه ولو كان البند مفتوحاً */
+            border-top-color: #9ec5fe;
+            border-bottom-color: #9ec5fe;
+            border-left-color: #9ec5fe;
+            box-shadow: 0 .5rem 1rem rgba(13, 110, 253, .08);
+        }
+
+    .zu-item-head {
+        background: none;
+        border: 0;
+        width: 100%;
+        text-align: start;
+        padding: 14px 16px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+    }
+
+        .zu-item-head:hover:not(:disabled) {
+            background-color: rgba(13, 110, 253, .04);
+        }
+
+        .zu-item-head:disabled {
+            cursor: not-allowed;
+        }
+
+    .zu-item-num {
+        min-width: 38px;
+        height: 34px;
+        padding: 0 8px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        border-radius: 10px;
+    }
+
+    .zu-item-title {
+        flex: 1 1 240px;
+        font-size: 1.05rem;
+        font-weight: 800;
+        line-height: 1.5;
+        color: var(--bs-emphasis-color);
+        overflow-wrap: anywhere;
+    }
+
+        .zu-notuploaded .zu-item-title {
+            font-weight: 700;
+            opacity: .75;
+        }
+
+    .zu-item-count {
+        font-size: .88rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .zu-item-body {
+        padding: 0 16px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .zu-item-iso {
+        font-size: .8rem;
+        font-weight: 700;
+        color: #0d6efd;
+        background: rgba(13, 110, 253, .08);
+        border: 1px solid rgba(13, 110, 253, .2);
+        border-radius: 999px;
+        padding: 3px 12px;
+        display: inline-block;
+    }
+
+    .zu-item-reason {
+        white-space: pre-line;
+        font-size: .88rem;
+        margin: 0;
+    }
+
+</style>
+
+<div dir="@Ui.Dir" class="zu-review-page">
+    <div class="container-fluid px-0">
+
+        @* ===================== رأس الصفحة ===================== *@
+        <PageHeader Title="@PageHeading">
+            <div class="bg-light rounded-4 p-3 border">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-semibold"><i class="bi bi-graph-up-arrow text-primary"></i> @ProgressLabel</span>
+                    <span class="fs-5 fw-bold text-primary">@ClosedPercent%</span>
+                </div>
+                <div class="progress zu-progress rounded-pill" role="progressbar"
+                     aria-label="@T("نسبة البنود المعتمدة نهائياً")" aria-valuenow="@ClosedPercent" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar progress-bar-striped @(ClosedPercent < 100 ? "progress-bar-animated" : "") @(ClosedPercent switch { 100 => "bg-success", >= 50 => "bg-primary", _ => "bg-info" })"
+                         style="width: @(ClosedPercent)%"></div>
+                </div>
+                <div class="d-flex justify-content-between small text-muted mt-2">
+                    <span>@F("{0} من أصل {1} بنداً معتمدة نهائياً", TotalClosed, TotalItems)</span>
+                    <span><i class="bi bi-hourglass-split text-primary"></i> @F("{0} بنداً بانتظار تدقيقك", TotalAwaitingItems)</span>
+                </div>
+            </div>
+        </PageHeader>
+
+        @if (IsAdmin)
+        {
+            <div class="alert alert-warning py-2 small mb-4 rounded-3 d-flex align-items-center gap-2">
+                <i class="bi bi-people-fill"></i>
+                <span>@F("وضع الاختبار: تفتح شاشة رئيس الوحدة بصلاحياته كاملة، لكن كل قرار تضغطه يُسجَّل باسمك أنت (الرقم الوظيفي {0}).", ReviewerEmployeeId)</span>
+            </div>
+        }
+
+        @* ===================== إحصائيات كل الجهات ===================== *@
+        <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+            <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
+                @* العنوان في جهة البداية وخانة البحث في الطرف الآخر من الصفحة، وجهاً لوجه في سطر واحد. *@
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-building-check text-primary fs-5"></i> @StatsCardTitle
+                    </h2>
+                    @if (!Scoped)
+                    {
+                        <div class="input-group zu-stats-search">
+                            <span class="input-group-text bg-white border"><i class="bi bi-search text-muted"></i></span>
+                            <input type="search" class="form-control border" @bind="StatsQuery" @bind:event="oninput"
+                                   placeholder="@T("ابحث عن جهة أو بند أو رمز آيزو")" aria-label="@T("ابحث عن جهة أو بند أو رمز آيزو")" />
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 zu-stat-table">
+                    <thead class="table-light">
+                        <tr>
+                            @* صفحة الجهة الواحدة لا عمود جهة فيها: كل سطر جهتها، فتُحذف من الجدول كله *@
+                            @if (!Scoped)
+                            {
+                                <th class="ps-4">@T("الجهة")</th>
+                            }
+                            <th class="text-center">@T("عدد بنودها")</th>
+                            <th class="text-center">@T("تم رفعها")</th>
+                            <th class="text-center">@T("بانتظار تدقيقك")</th>
+                            <th class="text-center">@T("تم رفضها")</th>
+                            <th class="text-center">@T("معتمد نهائي")</th>
+                            <th class="pe-4" style="min-width: 170px">@T("نسبة الإنجاز")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (ShownStats.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="@(Scoped ? 6 : 7)" class="text-center text-muted py-4">
+                                    <i class="bi bi-search"></i> @T("لا جهة أو بند يطابق هذا البحث")
+                                </td>
+                            </tr>
+                        }
+                        @foreach (var stat in ShownStats)
+                        {
+                            <tr>
+                                @if (!Scoped)
+                                {
+                                    <td class="ps-4">
+                                        @* اسم الجهة يفتح بنودها في اللوحة نفسها، فلا رابط خارجي إلى صفحة الجهة *@
+                                        <button type="button" class="zu-dept-link" title="@T("كل بنود هذه الجهة")"
+                                                @onclick="() => SelectStatAsync(stat, StatColumn.AllItems)">
+                                            @T(stat.DepartmentName)
+                                        </button>
+                                        @* جهةٌ جذبها إلى الجدول بندُها لا اسمها: تُذكر البنود المطابقة تحته *@
+                                        @if (MatchedItems(stat) is { Count: > 0 } matched)
+                                        {
+                                            <div class="small text-muted mt-1 zu-stats-match">
+                                                <i class="bi bi-search"></i>
+                                                @foreach (var item in matched)
+                                                {
+                                                    <span class="me-2" dir="auto">@F("بند {0}: {1}", item.Number, T(item.Title))</span>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                }
+                                @foreach (var cell in CellsFor(stat))
+                                {
+                                    <td class="text-center">
+                                        <button type="button" class="zu-stat-cell @(IsActive(stat, cell.Metric) ? "active" : "")"
+                                                title="@T(cell.Hint)" disabled="@(cell.Count == 0)"
+                                                @onclick="() => SelectStatAsync(stat, cell.Metric)">
+                                            @if (cell.Count > 0)
+                                            {
+                                                <span class="badge rounded-pill @cell.BadgeClass">@cell.Count</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">0</span>
+                                            }
+                                        </button>
+                                    </td>
+                                }
+                                <td class="pe-4">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="progress flex-grow-1 rounded-pill" style="height: 10px" role="progressbar"
+                                             aria-label="@F("نسبة إنجاز {0}", T(stat.DepartmentName))" aria-valuenow="@stat.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+                                            <div class="progress-bar @(stat.CompletionPercent switch { 100 => "bg-success", >= 50 => "bg-primary", _ => "bg-info" })"
+                                                 style="width: @(stat.CompletionPercent)%"></div>
+                                        </div>
+                                        <span class="small fw-semibold @(stat.CompletionPercent == 0 ? "text-muted" : "text-primary")">@stat.CompletionPercent%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* ===================== لوحة البنود التي فتحها الرقم ===================== *@
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-list-check text-primary fs-5"></i> @PanelTitle
+                    </h2>
+                    @if (SelectedStat is not null)
+                    {
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="badge rounded-pill text-bg-light border">@F("{0} بنداً", VisibleItems.Count)</span>
+                            @if (SelectedMetric != StatColumn.AllItems)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-3"
+                                        @onclick="() => SelectStatAsync(SelectedStat, StatColumn.AllItems)">
+                                    @F("كل بنود {0}", T(SelectedStat.DepartmentName))
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="card-body p-4">
+                @if (Message is not null)
+                {
+                    <div class="alert @MessageClass rounded-3 py-2 small">@Message</div>
+                }
+
+                @if (SelectedStat is null)
+                {
+                    <div class="text-center py-5">
+                        <div class="zu-stat-icon rounded-4 bg-light text-muted mx-auto mb-3"><i class="bi bi-hand-index-thumb"></i></div>
+                        <div class="fw-bold">@T("لم تُفتح لوحة بعد")</div>
+                        <div class="small text-muted">@T("اضغط على رقم في جدول الإحصائيات لتفتح بنود الجهة التي تنتظرك.")</div>
+                    </div>
+                }
+                else if (VisibleItems.Count == 0)
+                {
+                    <div class="text-center py-5">
+                        <div class="zu-stat-icon rounded-4 bg-light text-muted mx-auto mb-3"><i class="bi bi-inboxes"></i></div>
+                        <div class="fw-bold">@T("لا بنود في هذه الخانة")</div>
+                        <div class="small text-muted">@F("اضغط رقماً آخر في صف {0} أو افتح كل بنود الجهة.", T(SelectedStat.DepartmentName))</div>
+                    </div>
+                }
+
+                <div class="d-flex flex-column gap-3">
+                    @foreach (var row in VisibleItems)
+                    {
+                        var isOpen = ExpandedItem == row.AuditItemId;
+                        <div class="zu-item-row zu-@CssSuffix(row.State) @(isOpen ? "open" : "")">
+                            @* «لم يتم رفعه» لا يُفتح: فلا شيء فيه تُدقّقه الشاشة *@
+                            <button type="button" class="zu-item-head" disabled="@(!row.IsOpenable)"
+                                    title="@(row.IsOpenable ? T("اضغط لعرض ملفات هذا البند") : T("لم يصل من هذا البند ملف أجازَه الوكيل"))"
+                                    @onclick="() => ToggleItem(row.AuditItemId)">
+                                <i class="bi @(row.IsOpenable ? (isOpen ? "bi-chevron-down text-primary" : (Ui.IsEnglish ? "bi-chevron-right text-muted" : "bi-chevron-left text-muted")) : "bi-dot text-muted")"></i>
+                                <span class="zu-item-num @NumberClass(row.State)" dir="ltr">@row.ItemNumber</span>
+                                <span class="zu-item-title" dir="auto">@T(row.Title)</span>
+                                <span class="zu-item-count text-muted" title="@F("ملفات أجازها الوكيل بـ {0}% فأعلى", GateMinScore)">
+                                    <i class="bi bi-paperclip"></i> @F("{0} ملف", row.Files.Count)
+                                </span>
+                                <span class="badge rounded-pill @StateBadgeClass(row.State) d-inline-flex align-items-center gap-1">
+                                    <i class="bi @StateIcon(row.State)"></i> @StateLabel(row.State)
+                                </span>
+                            </button>
+
+                            @if (isOpen)
+                            {
+                                <div class="zu-item-body">
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <span class="zu-item-iso" dir="ltr">ISO 21001 · @row.IsoReference</span>
+                                        @if (row.HeldFileCount > 0)
+                                        {
+                                            <span class="small text-muted">
+                                                <i class="bi bi-shield-lock"></i> @F("{0} ملفاً لم يبلغ {1}% فلم يصل إليك.", row.HeldFileCount, GateMinScore)
+                                            </span>
+                                        }
+                                    </div>
+
+                                    @* سبب الرفض لا يُعمَّم على البند: يُقرأ في صندوق الملف المرفوض نفسه *@
+                                    @foreach (var file in row.Files)
+                                    {
+                                        var isFileOpen = ExpandedFile == file.SubmissionId;
+                                        <div class="zu-file-row">
+                                            <div class="zu-file-head">
+                                                @* الاسم وحده يُضغط: الأزرار جواره لها ضغطتها، فلا يبتلع الضغطُ قراراً *@
+                                                <button type="button" class="zu-file-main"
+                                                        title="@T("اضغط لعرض حجم الملف وتواريخه وما رصده الوكيل")"
+                                                        aria-expanded="@(isFileOpen ? "true" : "false")"
+                                                        @onclick="() => ToggleFile(file.SubmissionId)">
+                                                    <i class="zu-file-icon @(file.Extension == ".pdf" ? "bi bi-file-earmark-pdf-fill text-danger" : "bi bi-file-earmark-word-fill text-primary")"></i>
+                                                    <span class="zu-file-name" dir="auto">@file.FileName</span>
+                                                    <i class="bi @(isFileOpen ? "bi-chevron-up" : "bi-chevron-down") small text-muted"></i>
+                                                </button>
+
+                                                <div class="zu-file-actions">
+                                                    <a class="btn btn-sm btn-outline-primary rounded-3 d-inline-flex align-items-center gap-1"
+                                                       href="@DownloadHref(file.SubmissionId)">
+                                                        <i class="bi bi-download"></i> @T("تنزيل")
+                                                    </a>
+                                                    <a class="btn btn-sm btn-outline-secondary rounded-3 d-inline-flex align-items-center gap-1"
+                                                       target="_blank" rel="noreferrer" href="@PreviewHref(file.SubmissionId)">
+                                                        <i class="bi bi-box-arrow-up-right"></i> @T("معاينة")
+                                                    </a>
+
+                                                    @if (file.FinalOutcome == FinalOutcome.NotReviewed && row.IsDecidable && CanSign)
+                                                    {
+                                                        <span class="vr"></span>
+                                                        <button type="button" class="btn btn-sm btn-success rounded-3 d-inline-flex align-items-center gap-1"
+                                                                disabled="@IsBusy" @onclick="() => ApproveAsync(file.SubmissionId)">
+                                                            <i class="bi bi-check-circle-fill"></i> @T("مقبول")
+                                                        </button>
+                                                        <button type="button" class="btn btn-sm btn-danger rounded-3 d-inline-flex align-items-center gap-1"
+                                                                disabled="@IsBusy" @onclick="() => ToggleReject(file.SubmissionId)">
+                                                            <i class="bi bi-x-circle-fill"></i> @T("رفض")
+                                                        </button>
+                                                    }
+                                                </div>
+
+                                                <div class="zu-file-state">
+                                                    <span class="badge rounded-pill @FileStateBadge(file.FinalOutcome, row.State) d-inline-flex align-items-center gap-1">
+                                                        <i class="bi @FileStateIcon(file.FinalOutcome, row.State)"></i> @FileStateLabel(file.FinalOutcome, row.State)
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            @if (Rejecting.Contains(file.SubmissionId))
+                                            {
+                                                <div class="zu-file-reject">
+                                                    <label class="small fw-bold text-muted" for="note-@file.SubmissionId">@T("سبب الرفض والإجراء التصحيحي المطلوب")</label>
+                                                    <textarea id="note-@file.SubmissionId" class="form-control rounded-3 mt-1" rows="2"
+                                                              value="@GetNote(file.SubmissionId)" @oninput="e => SetNote(file.SubmissionId, e)"
+                                                              placeholder="@T("مثال: الترويسة الرسمية غير مطابقة، يُعاد رفع النموذج بعد التحديث.")"></textarea>
+                                                    <div class="d-flex gap-2 mt-2">
+                                                        <button type="button" class="btn btn-sm btn-danger rounded-3"
+                                                                disabled="@(IsBusy || string.IsNullOrWhiteSpace(GetNote(file.SubmissionId)))"
+                                                                @onclick="() => RejectAsync(file.SubmissionId)">
+                                                            @T("تأكيد الرفض")
+                                                        </button>
+                                                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-3"
+                                                                @onclick="() => ToggleReject(file.SubmissionId)">
+                                                            @T("إلغاء")
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+
+                                            @if (isFileOpen)
+                                            {
+                                                <div class="zu-file-details">
+                                                    <div class="zu-file-meta">
+                                                        <div>
+                                                            <div class="zu-file-meta-label">@T("حجم الملف")</div>
+                                                            <div class="zu-file-meta-value">@FormatSize(file.FileSize)</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="zu-file-meta-label">@T("تاريخ الرفع")</div>
+                                                            <div class="zu-file-meta-value">@file.UploadedAt.ToString("yyyy/MM/dd HH:mm")</div>
+                                                        </div>
+                                                        @if (file.FinalOutcome != FinalOutcome.NotReviewed)
+                                                        {
+                                                            <div>
+                                                                <div class="zu-file-meta-label">@(file.FinalOutcome == FinalOutcome.Approved ? T("تاريخ الموافقة") : T("تاريخ الرفض"))</div>
+                                                                <div class="zu-file-meta-value">@(file.ReviewedAt?.ToString("yyyy/MM/dd HH:mm") ?? "—")</div>
+                                                            </div>
+                                                        }
+                                                    </div>
+
+                                                    <div class="small text-muted mt-2">
+                                                        @F("رفعه {0}", Person(file.UploaderName))
+                                                    </div>
+
+                                                    @if (file.FinalOutcome == FinalOutcome.Rejected)
+                                                    {
+                                                        <div class="zu-item-reason alert alert-danger py-2 px-3 mt-2 mb-0 rounded-3" dir="auto">
+                                                            <span class="fw-bold d-block"><i class="bi bi-exclamation-octagon-fill"></i> @T("سبب الرفض")</span>
+                                                            <span>@(string.IsNullOrWhiteSpace(file.FinalNote) ? "—" : file.FinalNote)</span>
+                                                        </div>
+                                                    }
+
+                                                    <div class="mt-3">
+                                                        <div class="d-flex flex-wrap align-items-center gap-2">
+                                                            <span class="small fw-bold text-muted"><i class="bi bi-search"></i> @T("ما رصده وكيل الفحص الآلي")</span>
+                                                            @if (file.AgentScore is int agentScore)
+                                                            {
+                                                                <span class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle">
+                                                                    <i class="bi bi-robot"></i> @F("دقة الوكيل {0}%", agentScore)
+                                                                </span>
+                                                            }
+                                                        </div>
+                                                        <div class="zu-findings mt-1 rounded-3 bg-light border p-3" dir="auto">
+                                                            @if (string.IsNullOrWhiteSpace(file.AgentFindings))
+                                                            {
+                                                                <span class="text-muted">@T("لم يسجّل الوكيل ملاحظات على هذا الملف.")</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                @T(file.AgentFindings)
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>عتبة الوكيل: ما دونها لا يصل إلى رئيس وحدة التطوير وضمان الجودة أصلاً.</summary>
+    private static int GateMinScore => 100 - AgentGate.MaxDefectRatePercent;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    /// <summary>معرّف الجهة في المسار: غائب على شاشة كل الجهات، وحاضر على صفحة جهة واحدة.</summary>
+    [Parameter]
+    public string? DepartmentId { get; set; }
+
+    /// <summary>صفحة جهة واحدة؟ فالجدول والنسبة واللوحة تتقلّص كلها إلى هذه الجهة.</summary>
+    private bool Scoped => !string.IsNullOrEmpty(DepartmentId);
+
+    private string DepartmentName =>
+        Stats.FirstOrDefault(s => s.DepartmentId == DepartmentId)?.DepartmentName ?? string.Empty;
+
+    private IReadOnlyList<DepartmentAuditStat> ShownStats
+    {
+        get
+        {
+            if (Scoped)
+                return Stats.Where(s => s.DepartmentId == DepartmentId).ToList();
+
+            var query = StatsQuery.Trim();
+            if (query.Length == 0)
+                return Stats;
+
+            return Stats.Where(s => MatchesStatsQuery(s, query)).ToList();
+        }
+    }
+
+    private string PageHeading => Scoped
+        ? F("التدقيق النهائي على بنود {0}", T(DepartmentName))
+        : T("التدقيق النهائي على بنود الجهات");
+
+    private string StatsCardTitle => Scoped
+        ? F("إحصائيات {0}", T(DepartmentName))
+        : T("إحصائيات الجهات");
+
+    private string ProgressLabel => Scoped
+        ? F("اعتماد بنود {0}", T(DepartmentName))
+        : T("اعتماد بنود الجامعة");
+
+    private string SheetTitle => Scoped
+        ? F("التدقيق النهائي على بنود {0} | ZU-AuditIntel", T(DepartmentName))
+        : T("التدقيق النهائي | ZU-AuditIntel");
+
+    private string ReviewerName { get; set; } = T("رئيس وحدة التطوير وضمان الجودة");
+    private string ReviewerEmployeeId { get; set; } = string.Empty;
+
+    /// <summary>من يرى كل الجهات على شاشة واحدة: رئيس الوحدة ومدير النظام.</summary>
+    private bool SeesEveryDepartment { get; set; }
+
+    /// <summary>جهة المدقّق اليدوي، أو null لغيره. صفحته محصورة فيها، فروابط ما سواها تُطوى له.</summary>
+    private string? OwnAuditedDepartment { get; set; }
+
+    /// <summary>التوقيع حقٌّ على جهة بعينها: كل جهة لمن يرى الكل، وجهته وحده لمدقّقها.</summary>
+    private bool CanSign => SeesEveryDepartment || (OwnAuditedDepartment is not null && OwnAuditedDepartment == DepartmentId);
+
+    /// <summary>مدير النظام داخل شاشة رئيس الوحدة بصلاحياته كاملة، والشريط الأعلى يخبره بذلك.</summary>
+    private bool IsAdmin { get; set; }
+
+    private List<DepartmentAuditStat> Stats = new();
+    private List<ReviewItemRow> Items = new();
+
+    /// <summary>خانة بحث جدول الجهات: باسم الجهة، أو بندٍ من بنودها، أو رمز آيزو.</summary>
+    private string StatsQuery = string.Empty;
+
+    /// <summary>فهرس بنود كل الجهات بأرقامها وعناوينها ومراجع آيزوها، يُحمَّل مرة عند فتح الشاشة.</summary>
+    private IReadOnlyList<AuditItemIndexEntry> ItemIndex = [];
+
+    private DepartmentAuditStat? SelectedStat;
+    private StatColumn SelectedMetric = StatColumn.AllItems;
+    private string? LoadedDepartmentId;
+    private HashSet<int>? PinnedItemIds;
+    private int? ExpandedItem;
+
+    /// <summary>الملف المفتوح تفاصيلُه داخل صندوقه: الحجم والتواريخ وما رصده الوكيل.</summary>
+    private int? ExpandedFile;
+
+    private readonly Dictionary<int, string> Notes = new();
+    private readonly HashSet<int> Rejecting = new();
+    private bool IsBusy;
+    private string? Message;
+    private string MessageClass = "alert-success";
+
+    /// <summary>
+    /// أرقام الرأس تبقى أرقام الجامعة كلها ولو ضيّق البحث الجدول: العنوان يقول «اعتماد بنود الجامعة»،
+    /// فلا تنقص نسبته لأن كلمة بحثٍ ضيّقت ما يُعرض تحته. وصفحة الجهة الواحدة أرقامُها هي.
+    /// </summary>
+    private IReadOnlyList<DepartmentAuditStat> TotalsStats => Scoped ? ShownStats : Stats;
+
+    private int TotalItems => TotalsStats.Sum(s => s.TotalItems);
+    private int TotalClosed => TotalsStats.Sum(s => s.ItemsApproved);
+    private int TotalAwaitingItems => TotalsStats.Sum(s => s.ItemsAwaitingReview);
+    private int ClosedPercent => TotalItems == 0 ? 0 : (int)Math.Round(TotalClosed * 100.0 / TotalItems);
+
+    private string PanelTitle => SelectedStat is null
+        ? T("لوحة البنود")
+        : SelectedMetric switch
+        {
+            StatColumn.AllItems => F("بنود {0} كلها", T(SelectedStat.DepartmentName)),
+            StatColumn.Uploaded => F("بنود {0} التي وصلك منها ملف مجاز", T(SelectedStat.DepartmentName)),
+            StatColumn.AwaitingReview => F("بنود {0} التي تنتظر تدقيقك", T(SelectedStat.DepartmentName)),
+            StatColumn.Rejected => F("بنود {0} التي رفضتها بعد إجازة الوكيل", T(SelectedStat.DepartmentName)),
+            _ => F("بنود {0} المعتمدة نهائياً", T(SelectedStat.DepartmentName))
+        };
+
+    private IReadOnlyList<ReviewItemRow> VisibleItems => SelectedStat is null || PinnedItemIds is null
+        ? []
+        : Items.Where(row => PinnedItemIds.Contains(row.AuditItemId)).ToList();
+
+    private static Func<ReviewItemRow, bool> Matches(StatColumn metric) => metric switch
+    {
+        StatColumn.Uploaded => row => row.State != ReviewState.NotUploaded,
+        StatColumn.AwaitingReview => row => row.State == ReviewState.AwaitingReview,
+        StatColumn.Rejected => row => row.State == ReviewState.Rejected,
+        StatColumn.Approved => row => row.State == ReviewState.Approved,
+        _ => row => true
+    };
+
+    /// <summary>خانات جدول الإحصائيات، وهي ترتيب الأرقام نفسه على الشاشة: أربع حالات لا خمس.</summary>
+    private enum StatColumn
+    {
+        AllItems,
+        Uploaded,
+        AwaitingReview,
+        Rejected,
+        Approved
+    }
+
+    private sealed record StatCell(StatColumn Metric, int Count, string BadgeClass, string Hint);
+
+    private static IReadOnlyList<StatCell> CellsFor(DepartmentAuditStat stat) =>
+    [
+        new(StatColumn.AllItems, stat.TotalItems, "bg-primary-subtle text-primary-emphasis border border-primary-subtle", "كل بنود هذه الجهة"),
+        new(StatColumn.Uploaded, stat.ItemsUploaded, "bg-info-subtle text-info-emphasis border border-info-subtle", "بنود وصلك منها ملف أجازَه الوكيل"),
+        new(StatColumn.AwaitingReview, stat.ItemsAwaitingReview, "bg-primary text-white", "بنود مجازة لم توقّع عليها بعد"),
+        new(StatColumn.Rejected, stat.ItemsRejected, "bg-danger-subtle text-danger-emphasis border border-danger-subtle", "بنود رفضتها بعد أن أجازها الوكيل، فعادت للجهة"),
+        new(StatColumn.Approved, stat.ItemsApproved, "bg-success-subtle text-success-emphasis border border-success-subtle", "بنود وقّعت كل ملفاتها المجازة")
+    ];
+
+    private bool IsActive(DepartmentAuditStat stat, StatColumn metric) =>
+        SelectedStat?.DepartmentId == stat.DepartmentId && SelectedMetric == metric;
+
+    /// <summary>
+    /// البحث يطابق الجهة باسمها كما يُعرض، أو ببندٍ من بنودها: عنوانه كما يُعرض، أو رمز آيزو،
+    /// أو رقم البند نفسه. مطابقةُ بندٍ تُدخل جهته في الجدول ولو لم يشبه اسمها حرفٌ من البحث.
+    /// </summary>
+    private bool MatchesStatsQuery(DepartmentAuditStat stat, string query) =>
+        stat.DepartmentId.Contains(query, StringComparison.OrdinalIgnoreCase)
+        || T(stat.DepartmentName).Contains(query, StringComparison.OrdinalIgnoreCase)
+        || QueryItems(stat.DepartmentId, query).Count > 0;
+
+    private IReadOnlyList<AuditItemIndexEntry> QueryItems(string departmentId, string query) =>
+        ItemIndex
+            .Where(e => e.DepartmentId == departmentId
+                && (e.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || T(e.Title).Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || e.IsoReference.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || e.Number.ToString(CultureInfo.InvariantCulture) == query))
+            .ToList();
+
+    /// <summary>
+    /// البنود التي يذكرها سطرٌ جذبته بنودُ جهته لا اسمها؛ وما طابقت الجهةُ نفسُها باسمها أو
+    /// بمعرّفها فلا بند يُذكر تحته لأن الاسم يكفي، ولا يُزحم الجدول بما لا يُقرأ.
+    /// </summary>
+    private IReadOnlyList<AuditItemIndexEntry> MatchedItems(DepartmentAuditStat stat)
+    {
+        var query = StatsQuery.Trim();
+        if (query.Length == 0
+            || stat.DepartmentId.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || T(stat.DepartmentName).Contains(query, StringComparison.OrdinalIgnoreCase))
+            return [];
+
+        return QueryItems(stat.DepartmentId, query).Take(2).ToList();
+    }
+
+    /// <summary>الحالات الأربع كما يسمّيها رئيس الوحدة، لا خامسة لها على هذه الشاشة.</summary>
+    private static string StateLabel(ReviewState state) => state switch
+    {
+        ReviewState.NotUploaded => T("لم يتم رفعه"),
+        ReviewState.AwaitingReview => T("بانتظار تدقيقك"),
+        ReviewState.Rejected => T("تم رفضه"),
+        _ => T("معتمد نهائي")
+    };
+
+    private static string CssSuffix(ReviewState state) => state switch
+    {
+        ReviewState.NotUploaded => "notuploaded",
+        ReviewState.AwaitingReview => "awaiting",
+        ReviewState.Rejected => "rejected",
+        _ => "approved"
+    };
+
+    private static string StateBadgeClass(ReviewState state) => state switch
+    {
+        ReviewState.NotUploaded => "text-bg-light border text-muted",
+        ReviewState.AwaitingReview => "bg-primary text-white",
+        ReviewState.Rejected => "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+        _ => "bg-success-subtle text-success-emphasis border border-success-subtle"
+    };
+
+    private static string StateIcon(ReviewState state) => state switch
+    {
+        ReviewState.NotUploaded => "bi-slash-circle",
+        ReviewState.AwaitingReview => "bi-hourglass-split",
+        ReviewState.Rejected => "bi-x-circle-fill",
+        _ => "bi-check2-circle"
+    };
+
+    /// <summary>الملف بلا قرار داخل بندٍ رُفض: لا ينتظر توقيعاً، بل رجع للجهة فليُدقَّق من جديد.</summary>
+    private static bool IsReturnedForReview(FinalOutcome outcome, ReviewState itemState) =>
+        outcome == FinalOutcome.NotReviewed && itemState == ReviewState.Rejected;
+
+    /// <summary>حالة الملف داخل صندوقه: تُقرأ من قرار الملف، ويُستثنى ملفُ بندٍ مرفوض لم يُحسم بعد.</summary>
+    private static string FileStateLabel(FinalOutcome outcome, ReviewState itemState) => outcome switch
+    {
+        FinalOutcome.Approved => T("معتمد نهائياً"),
+        FinalOutcome.Rejected => T("مرفوض"),
+        _ => IsReturnedForReview(outcome, itemState) ? T("أُعيد للمراجعة") : T("بانتظار تدقيقك")
+    };
+
+    private static string FileStateBadge(FinalOutcome outcome, ReviewState itemState) => outcome switch
+    {
+        FinalOutcome.Approved => "bg-success-subtle text-success-emphasis border border-success-subtle",
+        FinalOutcome.Rejected => "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+        _ => IsReturnedForReview(outcome, itemState)
+            ? "bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+            : "bg-primary text-white"
+    };
+
+    private static string FileStateIcon(FinalOutcome outcome, ReviewState itemState) => outcome switch
+    {
+        FinalOutcome.Approved => "bi-check2-circle",
+        FinalOutcome.Rejected => "bi-x-circle-fill",
+        _ => IsReturnedForReview(outcome, itemState) ? "bi-arrow-counterclockwise" : "bi-hourglass-split"
+    };
+
+    private static string NumberClass(ReviewState state) => state switch
+    {
+        ReviewState.NotUploaded => "bg-light text-muted border",
+        ReviewState.AwaitingReview => "bg-primary-subtle text-primary-emphasis",
+        ReviewState.Rejected => "bg-danger-subtle text-danger-emphasis",
+        _ => "bg-success-subtle text-success-emphasis"
+    };
+
+    private static string DownloadHref(int submissionId) => $"/review/evidence/{submissionId}?download=true";
+
+    private static string PreviewHref(int submissionId) => $"/review/evidence/{submissionId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            SeesEveryDepartment = user.IsFinalReviewer();
+            OwnAuditedDepartment = user.AuditedDepartmentId();
+
+            if (!SeesEveryDepartment && OwnAuditedDepartment is null)
+            {
+                IsBouncing = true;
+                Navigation.NavigateTo("/pending");
+                return;
+            }
+
+            // مدقّق الجهة لا يفتح جدول الكل ولا صفحة جهة غيره: فمساراه كلاهما يرجعانه إلى شاشته.
+            if (OwnAuditedDepartment is not null && DepartmentId != OwnAuditedDepartment)
+            {
+                IsBouncing = true;
+                Navigation.NavigateTo($"/review/{OwnAuditedDepartment}");
+                return;
+            }
+
+            IsAdmin = user.IsSystemAdministrator();
+            ReviewerName = user.Identity?.Name ?? ReviewerName;
+            ReviewerEmployeeId = user.FindFirst(AuditClaims.EmployeeId)?.Value ?? string.Empty;
+        }
+
+        Stats = (await Store.GetDepartmentStatsAsync()).ToList();
+
+        // لا تُحمَل أرقام الجهات الأخرى إلى شاشة مدقّقٍ أصلاً، فيبقى ما يُرسم وما يُقرأ جهةً واحدة.
+        if (OwnAuditedDepartment is not null)
+            Stats = Stats.Where(s => s.DepartmentId == OwnAuditedDepartment).ToList();
+
+        // البحث عن بندٍ أو رمز آيزو يحتاج فهرس بنود الجهات المعروضة كلها؛ صفحة جهة واحدة بلا خانة بحث أصلاً.
+        if (!Scoped)
+            ItemIndex = await Catalog.GetItemIndexAsync();
+
+        await ApplyRouteAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // لا تُعاد الوجهة بعد قفزةٍ إلى شاشة أخرى: فقفزتان معاً تصيران إلى /pending بدل صفحة صاحبه.
+        if (IsBouncing)
+            return;
+
+        // المسار يتغيّر على Instance نفسه: فتُعاد الجهة المختارة، أما ضغطات المستخدم على الأرقام فلا تُلغى.
+        if (RoutedDepartmentId != DepartmentId)
+            await ApplyRouteAsync();
+    }
+
+    private string? RoutedDepartmentId;
+
+    /// <summary>المكوّن في طريقه إلى شاشة أخرى، فلا يُحمّل شيئاً ولا يقفز قفزةً ثانية.</summary>
+    private bool IsBouncing;
+
+    /// <summary>صفحة الجهة تفتح بنودَ جهتها فوراً، ولا لوحة فارغة انتظاراً لضغطة رقم.</summary>
+    private async Task ApplyRouteAsync()
+    {
+        RoutedDepartmentId = DepartmentId;
+        if (!Scoped)
+            return;
+
+        var stat = Stats.FirstOrDefault(s => s.DepartmentId == DepartmentId);
+        if (stat is null)
+        {
+            Navigation.NavigateTo(SeesEveryDepartment ? "/review" : "/pending");
+            return;
+        }
+
+        await SelectStatAsync(stat, StatColumn.AllItems);
+    }
+
+    private async Task SelectStatAsync(DepartmentAuditStat stat, StatColumn metric)
+    {
+        SelectedStat = stat;
+        SelectedMetric = metric;
+        ExpandedItem = null;
+        ExpandedFile = null;
+        Message = null;
+
+        if (LoadedDepartmentId != stat.DepartmentId)
+        {
+            Items = (await Store.GetReviewBoardAsync(stat.DepartmentId)).ToList();
+            LoadedDepartmentId = stat.DepartmentId;
+        }
+
+        // الرقم يلتقط قائمة بنوده لحظة الضغط، فتبقى أمام المدقّق بحالتها المتجددة بدل أن تختفي وهو يوقّعها.
+        PinnedItemIds = Items.Where(Matches(metric)).Select(row => row.AuditItemId).ToHashSet();
+    }
+
+    private void ToggleItem(int auditItemId) =>
+        ExpandedItem = ExpandedItem == auditItemId ? null : auditItemId;
+
+    private void ToggleFile(int submissionId) =>
+        ExpandedFile = ExpandedFile == submissionId ? null : submissionId;
+
+    private async Task RefreshAsync()
+    {
+        var departmentId = SelectedStat?.DepartmentId;
+        Stats = (await Store.GetDepartmentStatsAsync()).ToList();
+        SelectedStat = Stats.FirstOrDefault(s => s.DepartmentId == departmentId) ?? SelectedStat;
+        if (SelectedStat is not null)
+        {
+            Items = (await Store.GetReviewBoardAsync(SelectedStat.DepartmentId)).ToList();
+            LoadedDepartmentId = SelectedStat.DepartmentId;
+        }
+    }
+
+    private async Task ApproveAsync(int submissionId)
+    {
+        if (!CanSign)
+            return;
+
+        IsBusy = true;
+        try
+        {
+            await Store.ApplyFinalOutcomeAsync(submissionId, FinalOutcome.Approved, null, ReviewerEmployeeId, ReviewerName);
+            Message = T("اعتمد الملف، فإن كان آخر ملف في بند صار البند «معتمد نهائي».");
+            MessageClass = "alert-success";
+            await RefreshAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task RejectAsync(int submissionId)
+    {
+        if (!CanSign)
+            return;
+
+        var note = GetNote(submissionId);
+        if (string.IsNullOrWhiteSpace(note))
+            return;
+
+        IsBusy = true;
+        try
+        {
+            await Store.ApplyFinalOutcomeAsync(submissionId, FinalOutcome.Rejected, note.Trim(), ReviewerEmployeeId, ReviewerName);
+            Rejecting.Remove(submissionId);
+            Notes.Remove(submissionId);
+            Message = T("رُفض الملف، فصار بندُه «تم رفضه» وعاد إلى الجهة لإجراء تصحيحي.");
+            MessageClass = "alert-warning";
+            await RefreshAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void ToggleReject(int submissionId)
+    {
+        if (!Rejecting.Remove(submissionId))
+            Rejecting.Add(submissionId);
+    }
+
+    private string GetNote(int submissionId) => Notes.GetValueOrDefault(submissionId, string.Empty);
+
+    private void SetNote(int submissionId, ChangeEventArgs args) =>
+        Notes[submissionId] = args.Value as string ?? string.Empty;
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / 1024d / 1024d:0.0} MB",
+        >= 1024 => $"{bytes / 1024d:0} KB",
+        _ => $"{bytes} B"
+    };
+}

@@ -1,0 +1,172 @@
+@page "/help"
+@layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
+@attribute [Authorize]
+
+<PageTitle>@T("شرح توضيحي | ZU-AuditIntel")</PageTitle>
+
+<div dir="@Ui.Dir" class="zu-help-page">
+	<div class="container px-0">
+		<PageHeader Title="@T("شرح توضيحي")" />
+
+		<section class="card border-0 shadow-sm rounded-4 mb-4">
+			<div class="card-body p-4">
+				<h2 class="h6 fw-bold mb-2"><i class="bi bi-patch-question text-primary"></i> @T("لماذا أُنشئ هذا النظام؟")</h2>
+				<p class="text-muted mb-0">
+					@T("صُمّم هذا النظام لينقل تدقيق الجودة الداخلي في جامعة الزرقاء من أوراق متفرقة إلى مسار واحد واضح: كل جهة تفتح لوحة بنودها من قائمة الفحص المعتمدة ZU/QP02F003، وكل بند يعرض أدلته كما وردت في الوثيقة. ترفع الجهة ملفاتها، فيقرأها فحص آلي أولاً، ثم يفتحها مدقّق بشري ليوقّعها أو يرفضها بسبب مكتوب. الغاية أن يعرف كل صاحب حساب أين وصل بنده بالضبط، وأن يبقى أثر كل قرار باسم صاحبه.")
+				</p>
+				<p class="text-muted mb-0 mt-2">
+					@T("ولهذا صار لكل صاحب حساب زر «الإشعارات»: كل رفع، وكل نتيجة فحص، وكل اعتماد أو رفض يصل إليه لحظة حدوثه، فلا حاجة إلى سؤال «أين وصل ملفي؟».")
+				</p>
+			</div>
+		</section>
+
+		<section class="card border-0 shadow-sm rounded-4 mb-4">
+			<div class="card-body p-4">
+				<h2 class="h6 fw-bold mb-3"><i class="bi bi-signpost-split text-primary"></i> @T("مسار الملف خطوة بخطوة")</h2>
+
+				<div class="zu-help-step">
+					<span class="zu-help-num">1</span>
+					<div>
+						<div class="fw-bold text-dark">@T("الدخول")</div>
+						<div class="text-muted small">@T("الدخول بالرقم الوظيفي وكلمة المرور. الحساب يُصدر من لجنة التدقيق، وكلمة المرور الأولى تُبدَّل قبل فتح أي شاشة.")</div>
+					</div>
+				</div>
+
+				<div class="zu-help-step">
+					<span class="zu-help-num">2</span>
+					<div>
+						<div class="fw-bold text-dark">@T("لوحة الجهة")</div>
+						<div class="text-muted small">@T("لكل جهة لوحتها: بنودها فقط، ولكل بند أدلته الموضوعية كما هي في الوثيقة الرسمية.")</div>
+					</div>
+				</div>
+
+				<div class="zu-help-step">
+					<span class="zu-help-num">3</span>
+					<div>
+						<div class="fw-bold text-dark">@T("رفع الأدلة")</div>
+						<div class="text-muted small">@T("تفتح البند، تحدّد الأدلة التي يغطيها ملفك، ثم ترفع الملفات. حذف أي ملف يعيد البند إلى «قيد العمل» ليُفحص من جديد.")</div>
+					</div>
+				</div>
+
+				<div class="zu-help-step">
+					<span class="zu-help-num">4</span>
+					<div>
+						<div class="fw-bold text-dark">@T("الفحص الآلي")</div>
+						<div class="text-muted small">@T("يقرأ الوكيل الملف ويقيس مطابقته، ولا يعبر ملف إلى التدقيق البشري إلا إذا لم يتجاوز العيب 10% أي دقة 90% فأعلى.")</div>
+					</div>
+				</div>
+
+				<div class="zu-help-step">
+					<span class="zu-help-num">5</span>
+					<div>
+						<div class="fw-bold text-dark">@T("التدقيق البشري")</div>
+						<div class="text-muted small">@T("يفتح المدقّق ملفات البند المجازة، فيعتمدها أو يرفضها ويكتب سبب الرفض والإجراء التصحيحي المطلوب.")</div>
+					</div>
+				</div>
+
+				<div class="zu-help-step zu-help-step-last">
+					<span class="zu-help-num">6</span>
+					<div>
+						<div class="fw-bold text-dark">@T("النتيجة")</div>
+						<div class="text-muted small">@T("لا يصير البند «معتمداً نهائياً» إلا إذا اعتمد المدقّق كل ملف أجازه الوكيل فيه، ويُقرأ بعدها في شاشة النتيجة النهائية.")</div>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="card border-0 shadow-sm rounded-4 mb-4">
+			<div class="card-body p-4">
+				<h2 class="h6 fw-bold mb-3"><i class="bi bi-cloud-arrow-up text-primary"></i> @T("كيف ترفع ملفاً؟")</h2>
+				<ul class="zu-help-list text-muted mb-0">
+					<li>@T("الصيغ المقبولة: PDF و DOCX فقط.")</li>
+					<li>@T("حتى 20 ميغابايت للملف، وحتى 10 ملفات في المرة الواحدة.")</li>
+					<li>@T("أعلن الأدلة التي يغطيها الملف قبل التحليل، فالبند لا يُحسب مكتملاً بملف لم يُعلن ما يغطيه.")</li>
+					<li>@T("الملف الممسوح ضوئياً بلا طبقة نصية لا يستطيع الوكيل قراءته، فصدّر الملف من مصدره إن أمكن.")</li>
+					<li>@T("كل رفع أو فحص أو قرار يظهر في صفحة الإشعارات، ويظهر عدده بجانب زرها في الشريط.")</li>
+				</ul>
+			</div>
+		</section>
+
+		<section class="card border-0 shadow-sm rounded-4 mb-4">
+			<div class="card-body p-4">
+				<h2 class="h6 fw-bold mb-3"><i class="bi bi-people text-primary"></i> @T("من يفعل ماذا؟")</h2>
+				<ul class="zu-help-list text-muted mb-0">
+					<li>@T("ممثل الجهة: يرفع أدلة جهته ويرى لوحتها وحدها.")</li>
+					<li>@T("مدقّق الجهة: شاشته على جهته، يعتمد أو يرفض ما أجازه الوكيل.")</li>
+					<li>@T("رئيس وحدة التطوير وضمان الجودة: يرى ملفات كل الجهات ويوقّع الاعتماد النهائي.")</li>
+					<li>@T("صاحب النتيجة النهائية: يقرأ ما أُغلق معتمداً، ولا يرفع دليلاً ولا يوقّع بنداً.")</li>
+					<li>@T("مدير النظام: يفتح كل الشاشات للمعاينة والدعم، ويوقّع باسمه لا باسم غيره.")</li>
+				</ul>
+			</div>
+		</section>
+
+		<section class="card border-0 shadow-sm rounded-4">
+			<div class="card-body p-4">
+				<h2 class="h6 fw-bold mb-3"><i class="bi bi-shield-lock text-primary"></i> @T("ما لا يفعله النظام")</h2>
+				<ul class="zu-help-list text-muted mb-0">
+					<li>@T("لا يعيد تعيين كلمات المرور ولا يرى بياناتها: زر «نسيت كلمة المرور» يفتح بوابة الجامعة الرسمية في تبويب جديد.")</li>
+					<li>@T("لا يعتمد بنداً بغير توقيع بشري، ولا يعدّل نص البنود والأدلة.")</li>
+					<li>@T("لا يخفي عن الجهة ملفاً رفضه المدقّق: سبب الرفض يظهر مع البند حتى يُعالَج.")</li>
+				</ul>
+			</div>
+		</section>
+	</div>
+</div>
+
+<style>
+	.zu-help-page {
+		background-color: #f8f9fa;
+		min-height: 100vh;
+	}
+
+	.zu-help-step {
+		position: relative;
+		display: flex;
+		align-items: flex-start;
+		gap: 14px;
+		padding-bottom: 18px;
+	}
+
+	/* خط رفيع يصل الأرقام، فيُقرأ المسار مساراً لا قائمة منفصلة. */
+	.zu-help-step::before {
+		content: "";
+		position: absolute;
+		inset-inline-start: 15px;
+		top: 34px;
+		bottom: 2px;
+		width: 2px;
+		background: #e2e8f0;
+	}
+
+	.zu-help-step-last {
+		padding-bottom: 0;
+	}
+
+		.zu-help-step-last::before {
+			display: none;
+		}
+
+	.zu-help-num {
+		width: 32px;
+		height: 32px;
+		flex: none;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(13, 110, 253, .10);
+		color: #0d6efd;
+		font-weight: 800;
+		font-size: .9rem;
+	}
+
+	.zu-help-list {
+		padding-inline-start: 1.2rem;
+		font-size: .92rem;
+	}
+
+		.zu-help-list li {
+			margin-bottom: .45rem;
+			line-height: 1.8;
+		}
+</style>
