@@ -1,12 +1,24 @@
-# تجاهل مجلدات البناء والملفات المؤقتة
+## Build output
 bin/
 obj/
 
-# تجاهل قواعد البيانات المحلية
+## Local editor / IDE state
+.vs/
+*.user
+*.suo
+~$*
+
+## Local SQLite database (regenerate with: dotnet ef database update)
 *.db
 *.db-shm
 *.db-wal
+*.db.bak*
 
-# تجاهل مجلدات النظام والبيئة
-.vs/
-.vscode/
+## مخزن ملفات الأدلة على القرص (يُبنى عند أول رفع)
+App_Data/
+# Local Vector Storage and Scratch
+chroma_db_storage/
+scratch/
+
+# Excel Data Files
+*.xlsx

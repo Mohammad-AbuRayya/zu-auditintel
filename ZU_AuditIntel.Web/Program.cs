@@ -11,7 +11,7 @@ using ZU_AuditIntel.Web.Data;
 using ZU_AuditIntel.Web.Endpoints;
 using ZU_AuditIntel.Web.Localization;
 using ZU_AuditIntel.Web.Models;
-using System.Diagnostics;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
