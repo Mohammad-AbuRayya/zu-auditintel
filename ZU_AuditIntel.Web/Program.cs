@@ -15,45 +15,6 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ==========================================
-// تشغيل سيرفر بايثون للذكاء الاصطناعي تلقائياً بصمت في الخلفية
-// ==========================================
-/*try
-{
-    var aiScriptPath = Path.Combine(builder.Environment.ContentRootPath, "..", "ZU_AuditIntel.AI");
-
-    var psi = new ProcessStartInfo
-    {
-        FileName = "py",
-        Arguments = "-m uvicorn main:app --port 8000",
-        WorkingDirectory = aiScriptPath,
-        UseShellExecute = false,
-        CreateNoWindow = true,        // يمنع ظهور الشاشة السوداء تماماً
-        RedirectStandardOutput = true,
-        RedirectStandardError = true
-    };
-
-    var aiProcess = Process.Start(psi);
-
-    // إغلاق سيرفر بايثون تلقائياً عند إيقاف موقع الـ Blazor
-    AppDomain.CurrentDomain.ProcessExit += (s, e) =>
-    {
-        try
-        {
-            if (aiProcess is not null && !aiProcess.HasExited)
-            {
-                aiProcess.Kill();
-                aiProcess.Dispose();
-            }
-        }
-        catch { }
-    };
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"تعذر تشغيل سيرفر الذكاء الاصطناعي تلقائياً: {ex.Message}");
-}*/
-
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -139,11 +100,16 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
-builder.Services.AddHttpClient("AiAgentClient", client =>
+builder.Services.Configure<AuditAiOptions>(builder.Configuration.GetSection(AuditAiOptions.SectionName));
+
+builder.Services.AddHttpClient(AuditAiClient.ClientName, (sp, client) =>
 {
-    client.BaseAddress = new Uri("http://localhost:8001");
-    client.Timeout = TimeSpan.FromMinutes(4);
+    var ai = sp.GetRequiredService<IOptions<AuditAiOptions>>().Value;
+    client.BaseAddress = new Uri(ai.BaseUrl);
+    // المهلة لطلب واحد — إرسال أو استطلاع — لا لجلسة فحص كاملة، فال فحص صار مهمةً عند سيرفر الوكلاء.
+    client.Timeout = TimeSpan.FromSeconds(ai.TimeoutSeconds);
 });
+builder.Services.AddScoped<AuditAiClient>();
 
 var app = builder.Build();
 
@@ -207,6 +173,14 @@ using (var startupConnection = new SqliteConnection(connectionString))
 
 using (var scope = app.Services.CreateScope())
 {
+    // بلا MigrateAsync لا يُبنى المخطط على جهازٍ جديد: القاعدة الحالية موجودة بجانب المشروع فينجح الإقلاع
+    // عليها وينكسر على أول نسخة نظيفة. الـ migrations تحمل معها زرع الكاتالوج (HasData + InsertData).
+    var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    await using (var db = await contextFactory.CreateDbContextAsync())
+    {
+        await db.Database.MigrateAsync();
+    }
+
     var directory = scope.ServiceProvider.GetRequiredService<IAccountDirectory>();
     await directory.SeedInitialUsersAsync();
 }

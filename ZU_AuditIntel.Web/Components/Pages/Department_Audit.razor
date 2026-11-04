@@ -5,7 +5,7 @@
 @inject IAuditCatalog Catalog
 @inject IEvidenceStore Evidence
 @inject NavigationManager Navigation
-@inject IHttpClientFactory HttpClientFactory
+@inject AuditAiClient Ai
 @using ZU_AuditIntel.Web.Endpoints
 @using System.IO
 @using System.IO.Compression
@@ -1467,61 +1467,67 @@
         item.ShortNote = null;
         StateHasChanged();
 
+        // المهمة تعيش عند الوكيل لا داخل هذه الدائرة: انقطاع الاتصال لا يلغي الفحص، والمهلة هنا
+        // سقفُ انتظار لا سقفُ معالجة، فلا تعود اللوحة أسيرة طلب واحد يمسك أربع دقائق.
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(Ai.Options.PollBudgetSeconds));
+
         try
         {
-            using var content = new MultipartFormDataContent();
-
-            // إرسال سياق البند الحالي
-            content.Add(new StringContent(DepartmentId), "department_id");
-            content.Add(new StringContent(item.Number.ToString()), "item_number");
-            content.Add(new StringContent(item.Title), "item_title");
-            content.Add(new StringContent(item.IsoReference ?? ""), "iso_reference");
-            content.Add(new StringContent(item.Workflow ?? ""), "workflow_text");
-            content.Add(new StringContent(JsonSerializer.Serialize(item.RequiredEvidence)), "required_evidence_json");
-
-            // إرفاق الملفات المرفوعة
+            var payloads = new List<AuditAiFilePayload>();
             foreach (var file in item.Files)
             {
-                var bytes = await Evidence.ReadBytesAsync(file.SubmissionId);
+                var bytes = await Evidence.ReadBytesAsync(file.SubmissionId, budget.Token);
                 if (bytes is null) continue;
 
-                var fileContent = new ByteArrayContent(bytes);
-                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-                    file.Extension == ".pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-                content.Add(fileContent, "files", file.Name);
+                payloads.Add(new AuditAiFilePayload(
+                    file.Name,
+                    file.Extension == ".pdf"
+                        ? "application/pdf"
+                        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    bytes));
             }
 
-            // إرسال الطلب إلى سيرفر بايثون (الوكلاء الأذكياء)
-            var client = HttpClientFactory.CreateClient("AiAgentClient");
-            var response = await client.PostAsync("/api/audit-item", content);
-            response.EnsureSuccessStatusCode();
+            if (payloads.Count == 0)
+                throw new InvalidOperationException("لم يُعثر على ملف مقروء على هذا البند.");
 
-            var aiResult = await response.Content.ReadFromJsonAsync<AiOrchestratorDto>();
-            if (aiResult is not null)
+            var jobId = await Ai.SubmitJobAsync(
+                DepartmentId,
+                item.Number,
+                item.Title,
+                item.IsoReference,
+                item.Workflow,
+                item.RequiredEvidence,
+                payloads,
+                budget.Token);
+
+            while (true)
             {
-                item.Score = aiResult.Score;
-                item.ShortNote = aiResult.ShortNote;
-                item.EvaluationNote = aiResult.EvaluationNote;
-                item.LastAuditedAt = DateTime.Now;
-                item.Status = aiResult.Status switch
-                {
-                    "Compliant" => AuditStatus.Compliant,
-                    "NeedsReview" => AuditStatus.NeedsReview,
-                    _ => AuditStatus.NonCompliant
-                };
+                var snapshot = await Ai.PollJobAsync(jobId, budget.Token);
 
-                // حفظ النتيجة في قاعدة البيانات لتظهر في لوحة الاعتماد: البوابة تقرر، والصفوف تحمل قرارها
-                await Evidence.ApplyAgentOutcomeAsync(item.Id, item.Score, item.EvaluationNote);
+                if (snapshot.State == "failed")
+                    throw new InvalidOperationException(snapshot.Error ?? "أفشل المحرك مهمته بلا سبب معلن.");
 
-                var outcome = AgentGate.IsApproved(item.Score) ? AgentOutcome.Approved : AgentOutcome.Rejected;
-                foreach (var file in item.Files)
+                if (snapshot.State == "done")
                 {
-                    file.Agent = outcome;
-                    file.AgentNote = item.EvaluationNote;
+                    if (snapshot.Result is null)
+                        throw new InvalidOperationException("انتهت المهمة بلا حكم من الوكلاء.");
+
+                    await ApplyVerdictAsync(item, snapshot.Result);
+                    break;
                 }
 
-                await RefreshBoardStatesAsync();
+                // رأس البند هو الموضع الوحيد الذي يُعرض أثناء التحليل، فمرحلة العمل تُكتب في ملاحظته.
+                item.ShortNote = string.IsNullOrWhiteSpace(snapshot.Message)
+                    ? "قيد الفحص الآلي…"
+                    : snapshot.Message!;
+                StateHasChanged();
+                await Task.Delay(TimeSpan.FromSeconds(Ai.Options.PollIntervalSeconds), budget.Token);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            item.Status = AuditStatus.NeedsReview;
+            item.ShortNote = "انتهت مهلة الانتظار؛ قد يكون الفحص ما زال جارياً عند المحرك.";
         }
         catch (Exception ex)
         {
@@ -1534,6 +1540,33 @@
             item.IsAnalyzing = false;
             StateHasChanged();
         }
+    }
+
+    /// <summary>الحكم إلى البند وصفوف ملفاته والمخزن، ثم درجات اللوحة من القاعدة لا من الذاكرة.</summary>
+    private async Task ApplyVerdictAsync(AuditItem item, AiVerdict verdict)
+    {
+        item.Score = verdict.Score;
+        item.ShortNote = verdict.ShortNote;
+        item.EvaluationNote = verdict.EvaluationNote;
+        item.LastAuditedAt = DateTime.Now;
+        item.Status = verdict.Status switch
+        {
+            "Compliant" => AuditStatus.Compliant,
+            "NeedsReview" => AuditStatus.NeedsReview,
+            _ => AuditStatus.NonCompliant
+        };
+
+        // حفظ النتيجة في قاعدة البيانات لتظهر في لوحة الاعتماد: البوابة تقرر، والصفوف تحمل قرارها
+        await Evidence.ApplyAgentOutcomeAsync(item.Id, item.Score, item.EvaluationNote);
+
+        var outcome = AgentGate.IsApproved(item.Score) ? AgentOutcome.Approved : AgentOutcome.Rejected;
+        foreach (var file in item.Files)
+        {
+            file.Agent = outcome;
+            file.AgentNote = verdict.EvaluationNote;
+        }
+
+        await RefreshBoardStatesAsync();
     }
 
     /// <summary>
@@ -1557,15 +1590,6 @@
         await RefreshBoardStatesAsync();
         StateHasChanged();
     }
-
-    private sealed record AiOrchestratorDto(
-        string Status,
-        int Score,
-        double ErrorPercentage,
-        string ShortNote,
-        string EvaluationNote,
-        List<string> Findings
-    );
 
     /// <summary>
     /// الملفات المسترجَعة من المخزن تصل بلا نتيجة فحص، فتُقرأ من القرص عند الحاجة إليها لا عند
