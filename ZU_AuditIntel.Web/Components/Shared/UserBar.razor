@@ -1,27 +1,23 @@
-@* الشريط العلوي لهوية المستخدم: الاسم والرقم الوظيفي والدور مع زر الخروج. *@
-@inject NavigationManager Navigation
+@* بطاقة هوية المستخدم في الشريط الجانبي: الصورة أول شيء وحدها، تحتها الاسم بخط عريض،
+   ثم بعد فراغ اسم الجهة التي يتبعها صاحب الحساب. تسمية الدور لم تعد تُعرض. *@
+@using System.Security.Claims
+@inject IAuditCatalog Catalog
+@inject IWebHostEnvironment Env
 
-<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 zu-user-bar">
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-        <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
-            <i class="bi bi-person-badge text-primary"></i>
-            <span class="fw-semibold">@FullName</span>
-        </span>
-        <span class="badge rounded-pill text-bg-light border px-3 py-2 d-inline-flex align-items-center gap-1">
-            <i class="bi bi-hash text-primary"></i>
-            <span dir="ltr" class="fw-bold">@EmployeeId</span>
-        </span>
-        <span class="badge rounded-pill text-bg-primary-subtle border border-primary-subtle d-inline-flex align-items-center gap-1">
-            <i class="bi bi-shield-lock text-primary"></i>
-            @RoleLabel
-        </span>
-    </div>
+<div class="zu-identity">
+    @if (PhotoUrl is null)
+    {
+        <span class="zu-identity-avatar" title="@Person(FullName)">@Initials</span>
+    }
+    else
+    {
+        <img class="zu-identity-avatar zu-identity-photo" src="@PhotoUrl"
+             alt="@Person(FullName)" title="@Person(FullName)" />
+    }
 
-    <button type="button" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-            onclick="zuSignOut()">
-        <i class="bi bi-box-arrow-left"></i>
-        تسجيل الخروج
-    </button>
+    <div class="zu-identity-name">@Person(FullName)</div>
+
+    <div class="zu-identity-dept">@DepartmentName</div>
 </div>
 
 @code {
@@ -29,8 +25,24 @@
     private Task<AuthenticationState>? AuthState { get; set; }
 
     private string FullName { get; set; } = "";
-    private string EmployeeId { get; set; } = "";
-    private string RoleLabel { get; set; } = "";
+    private string DepartmentName { get; set; } = "";
+
+    /// <summary>صورة صاحب الحساب إن وُجدت باسم رقمه الوظيفي في wwwroot/avatars، وإلا الحرفان.</summary>
+    private string? PhotoUrl { get; set; }
+
+    private string Initials
+    {
+        get
+        {
+            var words = FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return words.Length switch
+            {
+                0 => "",
+                1 => words[0][..1],
+                _ => $"{words[0][..1]}{words[1][..1]}"
+            };
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -39,16 +51,91 @@
 
         var user = (await AuthState).User;
         FullName = user.Identity?.Name ?? "";
-        EmployeeId = user.FindFirst(AuditClaims.EmployeeId)?.Value ?? "";
-        RoleLabel = user.RoleLabel();
+
+        var employeeId = user.FindFirstValue(AuditClaims.EmployeeId);
+        if (!string.IsNullOrEmpty(employeeId))
+        {
+            var relative = $"avatars/{employeeId}.jpg";
+            if (Env.WebRootFileProvider.GetFileInfo(relative).Exists)
+                PhotoUrl = "/" + relative;
+        }
+
+
+        var departmentId = user.DepartmentId();
+        if (departmentId is null)
+        {
+            // من لا جهة له: مدير النظام يفتح اللوحات كلها، وبقية الأدوار تتبع وحدة الجودة نفسها.
+            DepartmentName = user.IsSystemAdministrator() ? T("جميع الجهات") : T("وحدة الاعتماد وضمان الجودة");
+            return;
+        }
+
+        var department = await Catalog.GetDepartmentAsync(departmentId);
+        DepartmentName = T(department?.DepartmentName ?? departmentId);
     }
 }
 
 <style>
-    .zu-user-bar {
-        background-color: #fff;
-        border: 1px solid #e9ecef;
-        border-radius: 1rem;
-        padding: .65rem 1rem;
+    .zu-identity {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        /* الفراغ الأعلى يترك مكاناً لزرار الطي المثبّت في زاوية الشريط */
+        padding: 54px 8px 4px;
+    }
+
+    .zu-identity-avatar {
+        width: 150px;
+        /* مستطيل رأسي: يكفي لعرض الوجه والصدر بلا قصّ، وقريب من نسبة الصورة الأصلية. */
+        height: 240px;
+        flex: none;
+        border-radius: 28px;
+        background: #eef4ff;
+        border: 1px solid #dbe6ff;
+        box-shadow: 0 6px 16px rgba(15, 23, 42, .12);
+        color: #0d6efd;
+        font-size: 3.6rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* نسبة الإطار أطول من عرض الصورة قليلاً، فالتقاط الوجه من أعلاه يمنع قصّ الرأس. */
+    .zu-identity-photo {
+        object-fit: cover;
+        object-position: 50% 6%;
+    }
+
+    .zu-identity-name {
+        margin-top: 14px;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #1e293b;
+        line-height: 1.4;
+    }
+
+    .zu-identity-dept {
+        margin-top: 14px;
+        font-size: .95rem;
+        font-weight: 700;
+        color: #0d6efd;
+    }
+
+    /* الشريط مطويّ: تبقى الصورة وحدها، بلا اسم ولا جهة. */
+    html.zu-side-collapsed .zu-identity {
+        padding: 58px 0 0;
+    }
+
+    html.zu-side-collapsed .zu-identity-avatar {
+        width: 56px;
+        height: 76px;
+        border-radius: 16px;
+        font-size: 1.15rem;
+    }
+
+    html.zu-side-collapsed .zu-identity-name,
+    html.zu-side-collapsed .zu-identity-dept {
+        display: none;
     }
 </style>

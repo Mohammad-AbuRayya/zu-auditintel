@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using ZU_AuditIntel.Web.Data;
+using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Endpoints
 {
@@ -17,6 +18,10 @@ namespace ZU_AuditIntel.Web.Endpoints
             app.MapPost("/account/login", LoginAsync)
                 .AllowAnonymous()
                 .RequireRateLimiting("account-login");
+
+            app.MapGet("/account/staff-kind", StaffKindAsync)
+                .AllowAnonymous()
+                .RequireRateLimiting("staff-kind");
 
             app.MapPost("/account/change-password", ChangePasswordAsync)
                 .RequireAuthorization()
@@ -76,6 +81,31 @@ namespace ZU_AuditIntel.Web.Endpoints
             await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         }
 
+        /// <summary>
+        /// صفة صاحب الرقم الوظيفي لصفحة استعادة كلمة المرور: كادر أكاديمي أم موظف. الرد لا يفرّق بين
+        /// «موظف» و«لا وجود»: من لا رقم له في الجدول يُصنَّف بعدد خاناته كما كانت الصفحة تفعل وحدها،
+        /// فلا تصير النقطة عدّاد حسابات، ويبقى رابط تبديل البوابة لمن يخطئه التصنيف.
+        /// </summary>
+        private static async Task<IResult> StaffKindAsync(
+            IAccountDirectory directory,
+            string? employeeId,
+            CancellationToken cancellationToken)
+        {
+            var raw = (employeeId ?? "").Trim();
+            if (raw.Length is < 2 or > 10 || raw.Any(c => !char.IsDigit(c)))
+                return Results.NotFound();
+
+            var kind = await directory.FindAdjectiveByEmployeeIdAsync(raw, cancellationToken) switch
+            {
+                StaffAdjective.AcademicStaff => "academic",
+                StaffAdjective.Employee => "employee",
+                // رقم لا يعرفه الجدول (أو قيمة لم تعد لها صفة): تصنيفُ طول الخانات كما كانت الصفحة تفعل وحدها.
+                _ => raw.Length <= 5 ? "academic" : "employee"
+            };
+
+            return Results.Json(new { kind });
+        }
+
         private static AuthenticationProperties SessionProperties() => new()
         {
             IsPersistent = false,
@@ -87,5 +117,14 @@ namespace ZU_AuditIntel.Web.Endpoints
     public static class AuthorizationPolicies
     {
         public const string CanAudit = "CanAudit";
+
+        /// <summary>التدقيق النهائي على ملفات الجهات: لرئيس وحدة التطوير وضمان الجودة وللمدير.</summary>
+        public const string CanReview = "CanReview";
+
+        /// <summary>شاشة تدقيق جهة: تضاف إليها حق مدقّق الجهة اليدوي في صفحته هو.</summary>
+        public const string CanReviewBoard = "CanReviewBoard";
+
+        /// <summary>صفحة النتيجة النهائية: لقارئ النتيجة ولمدير النظام، ولا مدقّق فيها.</summary>
+        public const string CanReadResults = "CanReadResults";
     }
 }

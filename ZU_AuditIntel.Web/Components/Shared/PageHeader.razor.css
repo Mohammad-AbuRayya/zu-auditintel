@@ -1,0 +1,14 @@
+.zu-page-header-strip {
+    height: 6px;
+    background: linear-gradient(90deg, #0d6efd, #6ea8fe);
+}
+
+/* الشعار دائري على خلفية بيضاء، فيبدو مفرغاً في الوضعين لا مربعاً أبيض على الشريط الليلي. */
+.zu-page-header-logo {
+    width: 76px;
+    height: 76px;
+    flex: none;
+    border-radius: 50%;
+    background: #fff;
+    object-fit: contain;
+}

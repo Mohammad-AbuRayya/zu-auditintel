@@ -1,0 +1,282 @@
+@page "/notifications"
+@layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
+@attribute [Authorize]
+@inject INotificationStore NoticeStore
+
+<PageTitle>@T("الإشعارات | ZU-AuditIntel")</PageTitle>
+
+<div dir="@Ui.Dir" class="zu-notify-page">
+	<div class="container px-0">
+		<PageHeader Title="@T("الإشعارات")">
+			@if (NewCount > 0)
+			{
+				<span class="badge rounded-pill text-bg-danger">@F("{0} جديد", NewCount)</span>
+			}
+		</PageHeader>
+
+		@if (Rows.Count == 0)
+		{
+			<div class="card border-0 shadow-sm rounded-4">
+				<div class="card-body p-4 p-md-5 text-center">
+					<div class="zu-notify-empty mx-auto mb-3"><i class="bi bi-bell-slash"></i></div>
+					<h2 class="h5 fw-bold mb-2">@T("لا إشعارات بعد")</h2>
+					<p class="text-muted mb-0" style="max-width:44rem;margin-inline:auto;">
+						@T("كل ملف يُرفع، وكل نتيجة فحص آلي، وكل اعتماد أو رفض يصل إلى هذه الصفحة لحظة حدوثه.")
+					</p>
+				</div>
+			</div>
+		}
+		else
+		{
+			<div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+				<ul class="list-unstyled mb-0">
+					@foreach (var row in Rows)
+					{
+						<li class="zu-notify-row @(row.IsNew ? "zu-notify-new" : "")">
+							<div class="zu-notify-dot @KindClass(row.Kind)"><i class="bi @KindIcon(row.Kind)"></i></div>
+							<div class="flex-grow-1 min-w-0">
+								<div class="d-flex align-items-center gap-2 flex-wrap">
+									<span class="fw-bold text-dark">@Sentence(row)</span>
+									@if (row.IsNew)
+									{
+										<span class="badge rounded-pill text-bg-primary">@T("جديد")</span>
+									}
+								</div>
+
+								<div class="zu-notify-meta">
+									<span class="zu-notify-chip"><i class="bi bi-building"></i> @T(row.DepartmentName)</span>
+									@if (!string.IsNullOrWhiteSpace(row.FileName))
+									{
+										<span class="zu-notify-chip" dir="ltr"><i class="bi bi-file-earmark"></i> @row.FileName</span>
+									}
+									@if (row.AgentScore is not null)
+									{
+										<span class="zu-notify-chip"><i class="bi bi-speedometer2"></i> @F("دقة الوكيل {0}%", row.AgentScore)</span>
+									}
+									<span class="zu-notify-chip"><i class="bi bi-clock"></i> @row.CreatedAt.ToString("yyyy/MM/dd HH:mm")</span>
+								</div>
+
+								@if (!string.IsNullOrWhiteSpace(row.Note))
+								{
+									<div class="zu-notify-note">@row.Note</div>
+								}
+							</div>
+
+							<a class="zu-notify-link" href="@LinkFor(row)" title="@T("فتح الشاشة التي تعرض هذا البند")">
+								<i class="bi @(Ui.IsEnglish ? "bi-arrow-right" : "bi-arrow-left")"></i>
+							</a>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+	</div>
+</div>
+
+@code {
+	[CascadingParameter]
+	private Task<AuthenticationState>? AuthState { get; set; }
+
+	private IReadOnlyList<NotificationRow> Rows { get; set; } = [];
+
+	/// <summary>ما كان جديداً لحظة الفتح: تُعلَّم السطور مقروءة بعده، فتبقى البادرة على ما وصل الآن.</summary>
+	private int NewCount { get; set; }
+
+	private bool IsRepresentative { get; set; }
+	private bool IsAdministrator { get; set; }
+	private bool IsResultReader { get; set; }
+
+	protected override async Task OnInitializedAsync()
+	{
+		if (AuthState is null)
+			return;
+
+		var user = (await AuthState).User;
+		var viewer = NotificationViewer.From(user);
+		IsRepresentative = user.IsEntityRepresentative();
+		IsAdministrator = user.IsSystemAdministrator();
+		IsResultReader = user.IsFinalResultReader();
+
+		var rows = await NoticeStore.ListAsync(viewer);
+		NewCount = rows.Count(r => r.IsNew);
+		Rows = rows;
+
+		// فتح الصفحة هو القراءة: تُسجَّل بعده، فلا يعود الرقم بجانب الزر إلى ما رآه صاحبه.
+		await NoticeStore.MarkAllReadAsync(viewer);
+	}
+
+	/// <summary>
+	/// العبارة تُبنى هنا لا في قاعدة البيانات: السطر يحفظ أجزاءه، فتقرأ العربيةُ عربيةً
+	/// والإنجليزيةُ إنجليزية، ويبقى نص البند كما ورد في وثيقة التدقيق.
+	/// </summary>
+	private string Sentence(NotificationRow row) => row.Kind switch
+	{
+		NotificationKind.Uploaded => F("رفع {0} ملفاً إلى دليل بند «{1}».", row.ActorName ?? "", row.ItemTitle),
+		NotificationKind.AgentPassed => F("اجتاز بند «{0}» الفحص الآلي وصار بانتظار التدقيق البشري.", row.ItemTitle),
+		NotificationKind.AgentFailed => F("لم يجتز بند «{0}» الفحص الآلي، فعاد إلى الجهة لإجراء تصحيحي.", row.ItemTitle),
+		NotificationKind.Overridden => F("تجاوز {0} الفحص الآلي وأجاز ملف بند «{1}» يدوياً.", row.ActorName ?? "", row.ItemTitle),
+		NotificationKind.Approved => F("اعتمد {0} ملفاً من بند «{1}».", row.ActorName ?? "", row.ItemTitle),
+		_ => F("رفض {0} ملفاً من بند «{1}».", row.ActorName ?? "", row.ItemTitle)
+	};
+
+	private static string KindIcon(NotificationKind kind) => kind switch
+	{
+		NotificationKind.Uploaded => "bi-file-earmark-arrow-up",
+		NotificationKind.AgentPassed => "bi-shield-check",
+		NotificationKind.AgentFailed => "bi-shield-exclamation",
+		NotificationKind.Overridden => "bi-pencil-square",
+		NotificationKind.Approved => "bi-check2-circle",
+		_ => "bi-x-circle"
+	};
+
+	private static string KindClass(NotificationKind kind) => kind switch
+	{
+		NotificationKind.Uploaded => "zu-kind-upload",
+		NotificationKind.AgentPassed => "zu-kind-pass",
+		NotificationKind.AgentFailed => "zu-kind-fail",
+		NotificationKind.Overridden => "zu-kind-override",
+		NotificationKind.Approved => "zu-kind-pass",
+		_ => "zu-kind-fail"
+	};
+
+	/// <summary>
+	/// كل صاحب حساب يفتح الشاشة التي يملكها على هذا البند: ممثل الجهة لوحتها، والمدقق شاشته،
+	/// وصاحب النتيجة سجل المعتمد لا شاشة توقيع.
+	/// </summary>
+	private string LinkFor(NotificationRow row)
+	{
+		if (IsResultReader)
+			return "/results";
+
+		if (IsRepresentative)
+			return $"/Audit/{row.DepartmentId}";
+
+		if (IsAdministrator)
+		{
+			return row.Kind is NotificationKind.Uploaded
+				or NotificationKind.AgentPassed
+				or NotificationKind.AgentFailed
+				or NotificationKind.Overridden
+				? $"/Audit/{row.DepartmentId}"
+				: $"/review/{row.DepartmentId}";
+		}
+
+		return $"/review/{row.DepartmentId}";
+	}
+}
+
+<style>
+	.zu-notify-page {
+		background-color: #f8f9fa;
+		min-height: 100vh;
+	}
+
+	.zu-notify-empty {
+		width: 84px;
+		height: 84px;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 2.2rem;
+		color: #0d6efd;
+		background: rgba(13, 110, 253, .08);
+	}
+
+	.zu-notify-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 14px;
+		padding: 16px 18px;
+		border-bottom: 1px solid #eef2f7;
+	}
+
+		.zu-notify-row:last-child {
+			border-bottom: 0;
+		}
+
+	/* ما لم يُقرأ قبل هذه الزيارة يبقى ظاهراً بهامش ملوّن حتى بعد أن يُعلَّم مقروءاً. */
+	.zu-notify-new {
+		background: #f5f9ff;
+		box-shadow: inset 3px 0 0 #0d6efd;
+	}
+
+	.zu-notify-dot {
+		width: 40px;
+		height: 40px;
+		flex: none;
+		border-radius: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.15rem;
+	}
+
+	.zu-kind-upload {
+		background: rgba(13, 110, 253, .10);
+		color: #0d6efd;
+	}
+
+	.zu-kind-pass {
+		background: rgba(25, 135, 84, .12);
+		color: #198754;
+	}
+
+	.zu-kind-fail {
+		background: rgba(220, 53, 69, .12);
+		color: #dc3545;
+	}
+
+	.zu-kind-override {
+		background: rgba(255, 193, 7, .18);
+		color: #a07800;
+	}
+
+	.zu-notify-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 14px;
+		margin-top: 6px;
+		font-size: .78rem;
+		color: #64748b;
+	}
+
+	.zu-notify-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+	}
+
+	.zu-notify-note {
+		margin-top: 8px;
+		padding: 8px 12px;
+		border-radius: 10px;
+		background: #f8f9fa;
+		border: 1px solid #e9ecef;
+		font-size: .82rem;
+		color: #475569;
+		white-space: pre-line;
+	}
+
+	.zu-notify-link {
+		flex: none;
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #0d6efd;
+		background: rgba(13, 110, 253, .08);
+		text-decoration: none;
+	}
+
+		.zu-notify-link:hover {
+			background: #0d6efd;
+			color: #fff;
+		}
+
+	.min-w-0 {
+		min-width: 0;
+	}
+</style>

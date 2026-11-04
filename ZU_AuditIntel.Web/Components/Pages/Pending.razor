@@ -1,34 +1,109 @@
 @page "/pending"
-@layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
+@layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
 @attribute [Authorize]
+@inject IAuditCatalog Catalog
 
-<PageTitle>لوحة العمل | ZU-AuditIntel</PageTitle>
+<PageTitle>@T("لوحات التدقيق | ZU-AuditIntel")</PageTitle>
 
-<div dir="rtl" class="zu-pending-page">
-	<div class="container py-4">
-		<div class="mb-3">
-			<UserBar />
-		</div>
+@* السهم يتقدم مع اتجاه القراءة: يساراً في العربية ويميناً في الإنجليزية. *@
+@{ var forwardArrow = Ui.IsEnglish ? "bi bi-arrow-right" : "bi bi-arrow-left"; }
 
-		<div class="card border-0 shadow-sm rounded-4">
-			<div class="card-body p-4 p-md-5 text-center">
-				<div class="zu-pending-icon mx-auto mb-3">
-					<i class="bi bi-cone-striped"></i>
-				</div>
-				<h1 class="h4 fw-bold mb-2">لوحتك لم تُبنَ بعد</h1>
-				<p class="text-muted mb-4" style="max-width:46rem;margin-inline:auto;">
-					اكتمل حتى الآن كتالوج دائرة المكتبة العامة فقط. لوحة جهة أو دور آخر
-					(قائمة مراجعة ضابط الارتباط، أو موافقات رئيس وحدة الجودة) تُضاف في الطبقة التالية
-					من بناء النظام: حفظ المخرجات وحالة الإرسال ثم وكلاء التدقيق.
-				</p>
-				@if (CanOpenLibraryBoard)
+<div dir="@Ui.Dir" class="zu-pending-page">
+	<div class="container px-0">
+		<PageHeader Title="@T("لوحات التدقيق")" />
+
+		@if (IsResultReader)
+		{
+			<div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+				<div class="zu-result-strip"></div>
+				<a href="/results" class="card-body p-4 d-flex align-items-center gap-3 text-decoration-none">
+					<div class="zu-result-icon rounded-4"><i class="bi bi-award-fill"></i></div>
+					<div>
+						<div class="fw-bold text-dark">@T("النتيجة النهائية لاعتماد بنود الجامعة")</div>
+						<div class="small text-success">
+							<span>@T("ما أغلقه المدقّق البشري من بنود كل الجهات، قراءةً لا توقيعاً") <i class="@forwardArrow"></i></span>
+						</div>
+					</div>
+				</a>
+			</div>
+		}
+
+		@if (IsReviewer)
+		{
+			<div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
+				<div class="zu-header-strip"></div>
+				<a href="@ReviewerHref" class="card-body p-4 d-flex align-items-center gap-3 text-decoration-none">
+					<div class="zu-board-icon rounded-4"><i class="bi bi-shield-check"></i></div>
+					<div>
+						<div class="fw-bold text-dark">@ReviewerTitle</div>
+						<div class="small text-primary">
+							<span>@ReviewerCaption <i class="@forwardArrow"></i></span>
+						</div>
+					</div>
+				</a>
+			</div>
+		}
+
+		@if (Boards.Count > 0)
+		{
+			<div class="row g-3">
+				@foreach (var board in Boards)
 				{
-					<a href="/LibraryAudit" class="btn btn-primary rounded-4 px-4">
-						الانتقال إلى لوحة المكتبة
-					</a>
+					<div class="col-sm-6 col-lg-4 col-xxl-3">
+						<a href="/Audit/@board.DepartmentId" class="card border-0 shadow-sm rounded-4 h-100 text-decoration-none zu-board">
+							<div class="card-body d-flex align-items-center gap-3 p-4">
+								<div class="zu-board-icon rounded-4"><i class="bi bi-building"></i></div>
+								<div>
+									<div class="fw-bold text-dark">@T(board.DepartmentName)</div>
+									<div class="small text-primary">@T("فتح لوحة التدقيق") <i class="@forwardArrow"></i></div>
+								</div>
+							</div>
+						</a>
+					</div>
 				}
 			</div>
-		</div>
+		}
+
+		@* مدير النظام وحده: لكل جهة صفحة تدقيقها النهائي المستقلة، فلا يحتاج إلى فتح جدول الكل ثم اختيارها. *@
+		@if (IsAdministrator)
+		{
+			<div class="mt-4">
+				<h2 class="h6 fw-bold d-flex align-items-center gap-2 mb-3">
+					<i class="bi bi-shield-check text-primary fs-5"></i> @T("صفحات التدقيق النهائي على بنود الجهات")
+				</h2>
+				<div class="row g-3">
+					@foreach (var board in Boards)
+					{
+						<div class="col-sm-6 col-lg-4 col-xxl-3">
+							<a href="@("/review/" + board.DepartmentId)" class="card border-0 shadow-sm rounded-4 h-100 text-decoration-none zu-board">
+								<div class="card-body d-flex align-items-center gap-3 p-4">
+									<div class="zu-review-icon rounded-4"><i class="bi bi-clipboard2-check"></i></div>
+									<div>
+										<div class="fw-bold text-dark">@T(board.DepartmentName)</div>
+										<div class="small text-success">@T("فتح صفحة التدقيق النهائي") <i class="@forwardArrow"></i></div>
+									</div>
+								</div>
+							</a>
+						</div>
+					}
+				</div>
+			</div>
+		}
+		@* بطاقة «لوحتك لم تُبنَ بعد» لحساب ليس له لوحة ولا شاشة: لا تُعرض لممثل جهة له لوحته. *@
+		@if (Boards.Count == 0 && !IsReviewer && !IsResultReader)
+		{
+			<div class="card border-0 shadow-sm rounded-4">
+				<div class="card-body p-4 p-md-5 text-center">
+					<div class="zu-pending-icon mx-auto mb-3">
+						<i class="bi bi-cone-striped"></i>
+					</div>
+					<h1 class="h4 fw-bold mb-2">@T("لوحتك لم تُبنَ بعد")</h1>
+					<p class="text-muted mb-0" style="max-width:46rem;margin-inline:auto;">
+						@T("كتالوج بنود الجهات مكتمل، ولوحاتها متاحة لممثليها، وشاشة التدقيق النهائي تعمل لرئيس وحدة الاعتماد. الباقي في الطبقة التالية: قائمة مراجعة ضابط الارتباط.")
+					</p>
+				</div>
+			</div>
+		}
 	</div>
 </div>
 
@@ -36,7 +111,29 @@
 	[CascadingParameter]
 	private Task<AuthenticationState>? AuthState { get; set; }
 
-	private bool CanOpenLibraryBoard { get; set; }
+	private List<AuditDepartment> Boards { get; } = new();
+
+	/// <summary>رئيس الوحدة له شاشة واحدة على كل الجهات، ومدقّق الجهة له شاشة على جهته وحدها.</summary>
+	private bool IsReviewer { get; set; }
+
+	/// <summary>صاحب النتيجة شاشةٌ له هي السجل لا لوحة جهة، فلا تختلط عليه بلوحات التدقيق.</summary>
+	private bool IsResultReader { get; set; }
+
+	/// <summary>مدير النظام يرى كل جهة، فتُعرض له صفحات التدقيق النهائي القيّدة بجهة واحدة.</summary>
+	private bool IsAdministrator { get; set; }
+
+	/// <summary>اسم جهة مدقّق اليدوي، أو null لمن يرى الجهات كلَّها.</summary>
+	private string? OwnDepartmentName { get; set; }
+
+	private string ReviewerHref { get; set; } = "/review";
+
+	private string ReviewerTitle => OwnDepartmentName is null
+		? T("التدقيق النهائي على بنود الجهات")
+		: F("التدقيق النهائي على بنود {0}", OwnDepartmentName);
+
+	private string ReviewerCaption => OwnDepartmentName is null
+		? T("إحصائيات كل الجهات، والبنود التي أجازها الوكيل وتنتظر توقيعك")
+		: T("بنود جهتك التي أجازها الوكيل وتنتظر توقيعك");
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -44,7 +141,31 @@
 			return;
 
 		var user = (await AuthState).User;
-		CanOpenLibraryBoard = user.CanViewBoard(DepartmentIds.Library);
+		var auditedDepartmentId = user.AuditedDepartmentId();
+		IsReviewer = user.IsFinalReviewer() || auditedDepartmentId is not null;
+		IsResultReader = user.CanReadFinalResults();
+
+		if (auditedDepartmentId is not null)
+		{
+			ReviewerHref = $"/review/{auditedDepartmentId}";
+			var auditedDepartment = await Catalog.GetDepartmentAsync(auditedDepartmentId);
+			OwnDepartmentName = T(auditedDepartment?.DepartmentName ?? auditedDepartmentId);
+		}
+
+		if (user.IsSystemAdministrator())
+		{
+			IsAdministrator = true;
+			Boards.AddRange(await Catalog.GetDepartmentsAsync());
+			return;
+		}
+
+		var departmentId = user.DepartmentId();
+		if (user.IsEntityRepresentative() && departmentId is not null)
+		{
+			var department = await Catalog.GetDepartmentAsync(departmentId);
+			if (department is not null)
+				Boards.Add(department);
+		}
 	}
 }
 
@@ -52,6 +173,28 @@
 	.zu-pending-page {
 		background-color: #f8f9fa;
 		min-height: 100vh;
+	}
+
+	.zu-header-strip {
+		height: 6px;
+		background: linear-gradient(90deg, #0d6efd, #6ea8fe) !important;
+	}
+
+	.zu-result-strip {
+		height: 6px;
+		background: linear-gradient(90deg, #198754, #75b798) !important;
+	}
+
+	.zu-result-icon {
+		width: 46px;
+		height: 46px;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.35rem;
+		background: rgba(25, 135, 84, .10);
+		color: #198754;
 	}
 
 	.zu-pending-icon {
@@ -64,5 +207,28 @@
 		font-size: 2.4rem;
 		color: #0d6efd;
 		background: rgba(13, 110, 253, .08);
+	}
+
+	.zu-board-icon,
+	.zu-review-icon {
+		width: 46px;
+		height: 46px;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.35rem;
+		background: rgba(13, 110, 253, .08);
+		color: #0d6efd;
+	}
+
+	.zu-review-icon {
+		background: rgba(25, 135, 84, .10);
+		color: #198754;
+	}
+
+	.zu-board:hover {
+		transform: translateY(-2px);
+		transition: transform .15s ease;
 	}
 </style>

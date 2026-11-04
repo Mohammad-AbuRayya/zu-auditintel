@@ -1,0 +1,355 @@
+@page "/results"
+@layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AuthorizationPolicies.CanReadResults)]
+@inject IEvidenceStore Store
+@inject NavigationManager Navigation
+@using ZU_AuditIntel.Web.Endpoints
+
+<PageTitle>@T("النتيجة النهائية للتدقيق | ZU-AuditIntel")</PageTitle>
+
+<style>
+    .zu-reg-page {
+        background-color: #f8f9fa;
+        min-height: 100%;
+    }
+
+    /* الشرائح أربع بعرض الصفحة نفسه: لا فراغاً بجانبها في الشاشات العريضة */
+    .zu-chip {
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+    }
+
+    .zu-chip-value {
+        font-size: 1.6rem;
+        font-weight: 800;
+        line-height: 1.1;
+    }
+
+    .zu-reg-row {
+        cursor: pointer;
+    }
+
+        .zu-reg-row:hover {
+            background-color: rgba(13, 110, 253, .06);
+        }
+
+    .zu-reg-code {
+        min-width: 38px;
+        height: 30px;
+        padding: 0 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        border-radius: 9px;
+        background: rgba(13, 110, 253, .12);
+        color: #0a58ca;
+    }
+
+    .zu-reg-title {
+        font-weight: 700;
+        color: var(--bs-emphasis-color);
+        overflow-wrap: anywhere;
+    }
+
+    .zu-reg-detail {
+        background-color: #f4f8fe;
+    }
+
+    .zu-file-row {
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 12px 14px;
+        background-color: #fff;
+    }
+
+    .zu-file-name {
+        font-size: .93rem;
+        font-weight: 700;
+        color: var(--bs-emphasis-color);
+        overflow-wrap: anywhere;
+    }
+</style>
+
+<div dir="@Ui.Dir" class="zu-reg-page">
+    <div class="container-fluid px-0">
+
+        @* ===================== رأس الصفحة ===================== *@
+        <PageHeader Title="@T("النتيجة النهائية لاعتماد بنود الجامعة")">
+            <div class="bg-light rounded-4 p-3 border">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="fw-semibold"><i class="bi bi-graph-up-arrow text-primary"></i> @T("اعتماد بنود الجامعة")</span>
+                    <span class="fs-5 fw-bold text-primary">@ClosedPercent%</span>
+                </div>
+                <div class="progress rounded-pill" style="height: 14px" role="progressbar"
+                     aria-label="@T("نسبة البنود المعتمدة نهائياً")" aria-valuenow="@ClosedPercent" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar progress-bar-striped bg-primary @(ClosedPercent < 100 ? "progress-bar-animated" : "")"
+                         style="width: @(ClosedPercent)%"></div>
+                </div>
+                <div class="d-flex justify-content-between small text-muted mt-2">
+                    <span>@F("{0} من أصل {1} بنداً معتمدة نهائياً", Rows.Count, TotalUniversityItems)</span>
+                    <span><i class="bi bi-building text-primary"></i> @F("من {0} جهة", DepartmentCount)</span>
+                </div>
+            </div>
+        </PageHeader>
+
+        @* ===================== شرائح العدد ===================== *@
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 p-3 zu-chip">
+                    <div class="zu-chip-value text-primary">@Rows.Count</div>
+                    <div class="small text-muted">@T("بند معتمد نهائياً")</div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 p-3 zu-chip">
+                    <div class="zu-chip-value text-primary">@DepartmentCount</div>
+                    <div class="small text-muted">@T("جهة لها بند معتمد")</div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 p-3 zu-chip">
+                    <div class="zu-chip-value text-primary">@SignedFiles</div>
+                    <div class="small text-muted">@T("ملف وقّعه المدقّق")</div>
+                </div>
+            </div>
+            <div class="col-6 col-xl-3">
+                <div class="card border-0 shadow-sm rounded-4 p-3 zu-chip">
+                    <div class="zu-chip-value fs-5 text-primary">@(Rows.Max(r => r.ApprovedAt)?.ToString("yyyy/MM/dd") ?? "—")</div>
+                    <div class="small text-muted">@T("آخر اعتماد")</div>
+                </div>
+            </div>
+        </div>
+
+        @* ===================== التصفية ===================== *@
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-3">
+                <div class="row g-3 align-items-center">
+                    <div class="col-lg-6">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border"><i class="bi bi-search text-muted"></i></span>
+                            <input type="search" class="form-control rounded-end-4 border" @bind="Query" @bind:event="oninput"
+                                   placeholder="@T("ابحث في عنوان البند أو الجهة أو رمز الآيزو")" aria-label="@T("ابحث في عنوان البند أو الجهة أو رمز الآيزو")" />
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <select class="form-select rounded-4 border" @bind="DepartmentFilter" aria-label="@T("الجهة")">
+                            <option value="">@F("كل الجهات المعتمدة ({0})", DepartmentCount)</option>
+                            @foreach (var group in DepartmentsWithApprovals)
+                            {
+                                <option value="@group.DepartmentId">@group.DepartmentName (@group.Count)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-lg-2 text-lg-end">
+                        @if (Query.Length > 0 || DepartmentFilter.Length > 0)
+                        {
+                            <button type="button" class="btn btn-link text-decoration-none p-0 fw-semibold" @onclick="ClearFilters">
+                                <i class="bi bi-x-circle"></i> @T("مسح التصفية")
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ===================== السجل ===================== *@
+        <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+            <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-list-check text-primary fs-5"></i> @T("البنود المعتمدة")
+                    </h2>
+                    <span class="small text-muted">@F("{0} بنداً في السجل بعد التصفية", VisibleRows.Count)</span>
+                </div>
+            </div>
+
+            @if (VisibleRows.Count == 0)
+            {
+                <div class="card-body p-4">
+                    <div class="text-center py-5">
+                        <div class="rounded-4 bg-light text-muted mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;font-size:1.5rem">
+                            <i class="bi bi-hourglass-split"></i>
+                        </div>
+                        @if (Rows.Count == 0)
+                        {
+                            <div class="fw-bold">@T("لم يُغلق التوقيع البشري بنداً بعد")</div>
+                            <div class="small text-muted">@T("تظهر البنود هنا لحظة أن يوقّع مدقّق الجهة على كل ملف أجازَه الوكيل في بند «مقبولاً».")</div>
+                        }
+                        else
+                        {
+                            <div class="fw-bold">@T("لا يطابق أي بند هذا التصفية")</div>
+                            <div class="small text-muted">@T("غيّر الكلمة أو الجهة، أو امسح التصفية لترى السجل كله.")</div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 36px"></th>
+                                <th class="ps-4">@T("الجهة")</th>
+                                <th class="text-center">@T("الرمز")</th>
+                                <th>@T("البند")</th>
+                                <th>@T("مرجع الآيزو")</th>
+                                <th class="text-center">@T("الملفات")</th>
+                                <th>@T("الموقِّع")</th>
+                                <th class="pe-4">@T("تاريخ الاعتماد")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in VisibleRows)
+                            {
+                                var isOpen = ExpandedItem == row.AuditItemId;
+                                <tr class="zu-reg-row" @onclick="() => Toggle(row.AuditItemId)">
+                                    <td class="ps-3">
+                                        <i class="bi @(isOpen ? "bi-chevron-down text-primary" : (Ui.IsEnglish ? "bi-chevron-right text-muted" : "bi-chevron-left text-muted"))"></i>
+                                    </td>
+                                    @* اسم الجهة نصٌّ لا رابط: شاشات التدقيق ليست حق صاحب النتيجة. *@
+                                    <td class="ps-4">
+                                        <span class="small fw-semibold"><i class="bi bi-building text-primary"></i> @T(row.DepartmentName)</span>
+                                    </td>
+                                    <td class="text-center"><span class="zu-reg-code">@row.ItemNumber</span></td>
+                                    <td><span class="zu-reg-title" dir="auto">@T(row.Title)</span></td>
+                                    <td><span class="small text-muted">@row.IsoReference</span></td>
+                                    <td class="text-center">
+                                        <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                                            <i class="bi bi-paperclip"></i> @F("{0} ملف", row.Files.Count)
+                                        </span>
+                                    </td>
+                                    <td><span class="small">@Person(row.ReviewerName ?? "—")</span></td>
+                                    <td class="pe-4"><span class="small text-muted">@row.ApprovedAt?.ToString("yyyy/MM/dd HH:mm")</span></td>
+                                </tr>
+
+                                @if (isOpen)
+                                {
+                                    <tr class="zu-reg-detail">
+                                        <td colspan="8" class="p-4">
+                                            <div class="d-flex flex-column gap-2">
+                                                @foreach (var file in row.Files)
+                                                {
+                                                    <div class="zu-file-row">
+                                                        <div class="d-flex flex-wrap align-items-start gap-3">
+                                                            <div class="fs-3 @(file.Extension == ".pdf" ? "bi bi-file-earmark-pdf-fill text-danger" : "bi bi-file-earmark-word-fill text-primary")"></div>
+                                                            <div class="flex-grow-1" style="min-width: 240px">
+                                                                <div class="zu-file-name">@file.FileName</div>
+                                                                <div class="small text-muted mt-1">
+                                                                    @F("رفعها {0} بتاريخ {1}", Person(file.UploaderName), file.UploadedAt.ToString("yyyy/MM/dd HH:mm"))
+                                                                    <span class="mx-1">·</span>
+                                                                    @* الحجم وحدة لاتينية: يُثبَّت على ltr وإلا انقلبت «2 KB» إلى «KB 2» *@
+                                                                    <span dir="ltr">@FormatSize(file.FileSize)</span>
+                                                                </div>
+                                                            </div>
+                                                            @* ملف بلا درجة وكيل لا شارة له أصلاً، فلا بديل نصيّ لها. *@
+                                                            @if (file.AgentScore is int agentScore)
+                                                            {
+                                                                <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle">
+                                                                    <i class="bi bi-robot"></i> @F("دقة الوكيل {0}%", agentScore)
+                                                                </span>
+                                                            }
+                                                        </div>
+
+                                                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2 pt-2 border-top">
+                                                            <a class="btn btn-sm btn-outline-primary rounded-3 d-inline-flex align-items-center gap-1"
+                                                               href="@($"/results/evidence/{file.SubmissionId}?download=true")">
+                                                                <i class="bi bi-download"></i> @T("تنزيل الملف")
+                                                            </a>
+                                                            <a class="btn btn-sm btn-link text-decoration-none" target="_blank" rel="noreferrer"
+                                                               href="@($"/results/evidence/{file.SubmissionId}")">
+                                                                <i class="bi bi-file-earmark-arrow-up"></i> @T("فتح للمعاينة")
+                                                            </a>
+                                                            <span class="vr"></span>
+                                                            <span class="badge rounded-pill bg-primary d-inline-flex align-items-center gap-1">
+                                                                <i class="bi bi-patch-check-fill"></i> @T("معتمد نهائياً")
+                                                            </span>
+                                                            <span class="small text-muted">
+                                                                @F("وقّعَه {0} بتاريخ {1}", Person(file.ReviewerName ?? "—"), file.ReviewedAt?.ToString("yyyy/MM/dd HH:mm") ?? "—")
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private IReadOnlyList<ApprovedItemRow> Rows = [];
+    private int TotalUniversityItems;
+
+    private string Query = string.Empty;
+    private string DepartmentFilter = string.Empty;
+    private int? ExpandedItem;
+
+    private int ClosedPercent => TotalUniversityItems == 0 ? 0 : (int)Math.Round(Rows.Count * 100.0 / TotalUniversityItems);
+    private int SignedFiles => Rows.Sum(r => r.Files.Count);
+    private int DepartmentCount => Rows.Select(r => r.DepartmentId).Distinct().Count();
+
+    private sealed record DepartmentGroup(string DepartmentId, string DepartmentName, int Count);
+
+    private IReadOnlyList<DepartmentGroup> DepartmentsWithApprovals =>
+        Rows.GroupBy(r => r.DepartmentId)
+            .Select(g => new DepartmentGroup(g.Key, g.First().DepartmentName, g.Count()))
+            .OrderByDescending(d => d.Count)
+            .ThenBy(d => d.DepartmentName, StringComparer.Ordinal)
+            .ToList();
+
+    private IReadOnlyList<ApprovedItemRow> VisibleRows => Rows.Where(row =>
+        (DepartmentFilter.Length == 0 || row.DepartmentId == DepartmentFilter)
+        && (Query.Length == 0
+            || row.Title.Contains(Query, StringComparison.OrdinalIgnoreCase)
+            || row.DepartmentName.Contains(Query, StringComparison.OrdinalIgnoreCase)
+            || row.IsoReference.Contains(Query, StringComparison.OrdinalIgnoreCase)
+            || row.ItemNumber.ToString().Contains(Query, StringComparison.Ordinal)))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var user = (await AuthState).User;
+            if (!user.CanReadFinalResults())
+            {
+                Navigation.NavigateTo("/pending");
+                return;
+            }
+        }
+
+        Rows = await Store.GetFinallyApprovedAsync();
+        TotalUniversityItems = (await Store.GetDepartmentStatsAsync()).Sum(s => s.TotalItems);
+    }
+
+    private void Toggle(int auditItemId) => ExpandedItem = ExpandedItem == auditItemId ? null : auditItemId;
+
+    private void ClearFilters()
+    {
+        Query = string.Empty;
+        DepartmentFilter = string.Empty;
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / 1024d / 1024d:0.0} MB",
+        >= 1024 => $"{bytes / 1024d:0} KB",
+        _ => $"{bytes} B"
+    };
+}

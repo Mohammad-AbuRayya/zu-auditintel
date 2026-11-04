@@ -3,16 +3,16 @@
 @layout ZU_AuditIntel.Web.Components.Layout.EmptyLayout
 @inject IHttpContextAccessor HttpContextAccessor
 
-<PageTitle>تسجيل الدخول - ZU-AuditIntel</PageTitle>
+<PageTitle>@T("تسجيل الدخول - ZU-AuditIntel")</PageTitle>
 
-<div class="zu-login-wrapper" dir="rtl">
+<div class="zu-login-wrapper" dir="@Ui.Dir">
 	<div class="zu-login-card">
 
 		<!-- القسم الأيمن: نموذج تسجيل الدخول -->
 		<div class="zu-form-section">
 			<div class="zu-form-header">
-				<h2>نظام التدقيق الداخلي الذكي</h2>
-				<p>وحدة الاعتماد وضمان الجودة — ZU-AuditIntel</p>
+				<h2>@T("نظام التدقيق الداخلي الذكي")</h2>
+				<p>@T("وحدة الاعتماد وضمان الجودة") &mdash; ZU-AuditIntel</p>
 			</div>
 
 			@if (LoginError is not null)
@@ -27,44 +27,56 @@
 
 				<!-- حقل الرقم الوظيفي -->
 				<div class="zu-input-group">
-					<span class="zu-badge-label">الرقم الوظيفي </span>
-					<input class="zu-input" type="text" name="employeeId" placeholder="أدخل رقمك الوظيفي..." autocomplete="username" />
+					<span class="zu-badge-label">@T("الرقم الوظيفي") </span>
+					<input class="zu-input" type="text" name="employeeId" placeholder="@T("أدخل رقمك الوظيفي...")" autocomplete="username" />
 				</div>
 
 				<!-- حقل كلمة المرور مع زر الإظهار والإخفاء -->
 				<div class="zu-input-group">
-					<span class="zu-badge-label">كلمة المرور</span>
+					<span class="zu-badge-label">@T("كلمة المرور")</span>
 					<div class="zu-password-wrapper">
-						<input id="zu-password" class="zu-input" type="password" name="password"
-							   placeholder="أدخل كلمة المرور..." autocomplete="current-password" />
-						<button type="button" class="zu-eye-btn" onclick="toggleZuPassword(this)" title="إظهار/إخفاء كلمة المرور">
-							<span>👁️</span>
+						<input id="zu-password" class="zu-input zu-password-input" type="password" name="password"
+							   placeholder="@T("أدخل كلمة المرور...")" autocomplete="current-password" />
+						@* الشاشة تُقدَّم من Server فلا حالة في المكوّن: الحقل وشكل الزر يقلبهما JavaScript معاً. *@
+						<button type="button" id="zu-eye" class="zu-eye-btn" onclick="toggleZuPassword()"
+								aria-pressed="false" aria-label="@T("إظهار كلمة المرور")"
+								data-hidden-label="@T("إظهار كلمة المرور")" data-shown-label="@T("إخفاء كلمة المرور")">
+							<i id="zu-eye-icon" class="zu-eye-glyph bi bi-eye"></i>
 						</button>
 					</div>
 				</div>
 
-				<button type="submit" class="zu-submit-btn">تسجيل الدخول</button>
+				<button type="submit" class="zu-submit-btn">@T("تسجيل الدخول")</button>
 
 				<div class="zu-forgot-wrapper">
-					<a href="#" class="zu-forgot-link">هل نسيت كلمة السر ؟</a>
+					@* الملاحة المحسَّنة تنقل المحتوى ولا تنفّذ سكربت الصفحة الجديدة، فالرابط تحميل كامل. *@
+					<a href="/forgot-password" class="zu-forgot-link" data-enhance-nav="false">@T("هل نسيت كلمة السر ؟")</a>
 				</div>
 			</form>
+
+			@* زر اللغة في قرص مستقل أسفل رابط كلمة السر: يبقى داخل تدفّق النموذج فلا يطفو على البطاقة. *@
+			<div class="zu-lang-wrapper">
+				<button type="button" class="zu-lang-btn" onclick="zuToggleLanguage()"
+						title="@T("تبديل لغة الموقع: العربية والإنجليزية")">
+					<i class="bi bi-translate"></i>@(Ui.IsEnglish ? "English" : "العربية")
+				</button>
+			</div>
 		</div>
 
 		<!-- القسم الأيسر: الهوية البصرية لجامعة الزرقاء -->
 		<div class="zu-brand-section">
 
-			<h1 class="zu-brand-university">جامعة الزرقاء</h1>
+			<h1 class="zu-brand-university">@T("جامعة الزرقاء")</h1>
 
 			<!-- شعار الجامعة الدائري مع شعار ISO متداخلاً على زاويته اليسرى -->
 			<div class="zu-brand-crest">
-				<img src="/images/zu-logo.png" alt="شعار جامعة الزرقاء" class="zu-crest-university" />
-				<img src="/images/iso-21001.jpeg" alt="شعار ISO 21001" class="zu-crest-iso" />
+				<img src="/images/zu-logo.png" alt="@T("شعار جامعة الزرقاء")" class="zu-crest-university" />
+				<img src="/images/iso-21001.jpeg" alt="@T("شعار ISO 21001")" class="zu-crest-iso" />
 			</div>
 
 			<div class="zu-brand-titles">
-				<h3>بوابة التدقيق والجودة الذكية</h3>
-				<p>نظام مؤتمت متعدد الوكلاء لمطابقة معايير الجودة الأكاديمية والإدارية</p>
+				<h3>@T("بوابة التدقيق والجودة الذكية")</h3>
+				<p>@T("نظام مؤتمت متعدد الوكلاء لمطابقة معايير الجودة الأكاديمية والإدارية")</p>
 			</div>
 
 			<div class="zu-waves"></div>
@@ -84,7 +96,7 @@
 		background-attachment: scroll;
 		background-clip: border-box;
 		background-color: rgba(0, 0, 0, 0);
-		background-image: url('/images/Gemini_Generated_Image_k9keibk9keibk9ke.jpeg');
+		background-image: url('/images/Login page background.jpeg');
 		background-origin: padding-box;
 		background-position: center;
 		background-repeat: no-repeat;
@@ -104,6 +116,40 @@
 		overflow: hidden;
 		border: 7px solid #ffffff;
 	}
+
+	/* زر اللغة في قرص مستقل أسفل رابط كلمة السر: داخل تدفّق النموذج، لا يطفو فوق البطاقة. */
+	.zu-lang-wrapper {
+		text-align: center;
+		margin-top: 20px;
+	}
+
+	.zu-lang-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid rgba(214, 229, 255, 0.95);
+		border-radius: 14px;
+		background: rgba(255, 255, 255, 0.92);
+		color: #0d6efd;
+		font-size: 0.92rem;
+		font-weight: 700;
+		padding: 9px 16px;
+		cursor: pointer;
+		box-shadow: 0 4px 14px rgba(20, 60, 120, 0.10);
+		transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+	}
+
+		.zu-lang-btn:hover {
+			border-color: #9ec5fe;
+			color: #1554c0;
+		}
+
+		/* الضغط يقلّب الشكل بالانكماش وتغميق اللون، بلا تعبئة الصندوق بالأزرق. */
+		.zu-lang-btn:active {
+			color: #0a4bb5;
+			border-color: #6ea8fe;
+			transform: scale(.96);
+		}
 
 	/* قسم النموذج (الأيمن) */
 	.zu-form-section {
@@ -171,24 +217,49 @@
 			box-shadow: 0 0 0 4px rgba(59, 125, 221, 0.12);
 		}
 
-	/* زر العين لكلمة المرور */
+	/* زر العين: أيقونة عارية في نهاية الحقل، بلا قرص ولا إطار */
 	.zu-password-wrapper {
 		position: relative;
 		display: flex;
 		align-items: center;
 	}
 
+	.zu-password-input {
+		padding-inline-end: 48px;
+	}
+
 	.zu-eye-btn {
 		position: absolute;
-		left: 14px;
+		inset-inline-end: 14px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		background: none;
 		border: none;
+		padding: 2px;
+		font-size: 1.2rem;
+		line-height: 1;
+		color: #94a3b8;
 		cursor: pointer;
-		font-size: 1.15rem;
-		color: #3b7ddd;
-		padding: 4px;
-		display: flex;
-		align-items: center;
+		transition: color .18s ease, transform .18s ease;
+	}
+
+		.zu-eye-btn:hover {
+			color: #3b7ddd;
+		}
+
+		/* الكلمة ظاهرة: الأيقونة تقلب عيناً مخطوفة وزرقة، وخلفية الحقل تبقى كما هي بلا أي تعبئة. */
+		.zu-eye-btn--on {
+			color: #2563eb;
+		}
+
+			.zu-eye-btn--on .zu-eye-glyph {
+				transform: scale(1.08);
+			}
+
+	.zu-eye-glyph {
+		display: inline-block;
+		transition: transform .18s ease;
 	}
 
 	/* زر تسجيل الدخول */
@@ -357,7 +428,16 @@
 <script>
 	function toggleZuPassword() {
 		var input = document.getElementById('zu-password');
-		input.type = input.type === 'password' ? 'text' : 'password';
+		var button = document.getElementById('zu-eye');
+		var icon = document.getElementById('zu-eye-icon');
+		var shown = input.type === 'password';
+
+		input.type = shown ? 'text' : 'password';
+		button.classList.toggle('zu-eye-btn--on', shown);
+		button.setAttribute('aria-pressed', shown ? 'true' : 'false');
+		button.setAttribute('aria-label', button.dataset[shown ? 'shownLabel' : 'hiddenLabel']);
+		icon.className = 'zu-eye-glyph bi ' + (shown ? 'bi-eye-slash' : 'bi-eye');
+		input.focus();
 	}
 </script>
 
@@ -369,9 +449,9 @@
 	{
 		LoginError = HttpContextAccessor.HttpContext?.Request.Query["error"].ToString() switch
 		{
-			"invalid" => "الرقم الوظيفي أو كلمة المرور غير صحيحة",
-			"denied" => "لا تملك صلاحية الوصول إلى هذه الشاشة",
-			"session" => "انتهت الجلسة، سجّل الدخول من جديد",
+			"invalid" => T("الرقم الوظيفي أو كلمة المرور غير صحيحة"),
+			"denied" => T("لا تملك صلاحية الوصول إلى هذه الشاشة"),
+			"session" => T("انتهت الجلسة، سجّل الدخول من جديد"),
 			_ => null
 		};
 	}
