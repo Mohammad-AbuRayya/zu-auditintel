@@ -28,7 +28,8 @@ builder.Services.AddAuditFirestore(builder.Configuration.GetSection(FirestoreOpt
 // في الذاكرة. أما الباقي فمتاجر جلسة: لا تحتفظ بشيء، فكل واحدة تُبنى مع الطلب.
 builder.Services.AddSingleton<IAuditCatalog, FirestoreAuditCatalog>();
 builder.Services.AddScoped<IAccountDirectory, FirestoreAccountDirectory>();
-builder.Services.AddSingleton<EvidenceStorage>();
+builder.Services.Configure<EvidenceBlobOptions>(builder.Configuration.GetSection(EvidenceBlobOptions.SectionName));
+builder.Services.AddSingleton<EvidenceBlobStorage>();
 builder.Services.AddScoped<IEvidenceStore, FirestoreEvidenceStore>();
 builder.Services.AddScoped<INotificationStore, FirestoreNotificationStore>();
 builder.Services.AddScoped<IMessageStore, FirestoreMessageStore>();

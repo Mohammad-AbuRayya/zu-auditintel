@@ -128,8 +128,11 @@ namespace ZU_AuditIntel.Web.Data
                 : Files.FirstOrDefault(f => f.FinalOutcome == FinalOutcome.Rejected)?.FinalNote;
     }
 
-    /// <summary>ملف دليل على القرص كما تحتاجه نقطة الدخول لعرضه، مع جهته لحقّ الاطلاع.</summary>
-    public sealed record EvidenceFileRef(string FullPath, string FileName, string Extension, string DepartmentId);
+    /// <summary>
+    /// ملف دليلٍ خرج من مخزن البايتات: بايتاته كما رُفعت، واسمه الأصلي وامتداده لمن يعرضه،
+    /// وجهته لحقّ الاطلاع. لا مسار قرص هنا لأن الخادم المستضيف لا قرص دائم له.
+    /// </summary>
+    public sealed record EvidenceFile(byte[] Bytes, string FileName, string Extension, string DepartmentId);
 
     /// <summary>
     /// حالة جهة واحدة كما تظهر في جدول إحصائيات التدقيق النهائي. الأرقام كلها بنود لا ملفات،
@@ -213,14 +216,14 @@ namespace ZU_AuditIntel.Web.Data
 
         Task<byte[]?> ReadBytesAsync(string submissionId, CancellationToken cancellationToken = default);
 
-        /// <summary>مرجع ملف على القرص ليرسله نقاط الدخول مباشرة دون تحميله في الذاكرة.</summary>
-        Task<EvidenceFileRef?> GetFileRefAsync(string submissionId, CancellationToken cancellationToken = default);
+        /// <summary>بايتات الملف ومنهجه، بعد أن تُقرأ الوثيقة مرة واحدة: نقاط الدخول ترسلها بلا قرص.</summary>
+        Task<EvidenceFile?> GetFileAsync(string submissionId, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// مرجع ملفٍ وقّعه المدقّق البشري «مقبولاً» وحده: شاشة النتيجة النهائية لا تفتح ملفاً
+        /// ملفٌ وقّعه المدقّق البشري «مقبولاً» وحده: شاشة النتيجة النهائية لا تفتح ملفاً
         /// لم يُعتمد بعد، فلا رقم ملف عندها يكشف بنداً ما زال عند صاحبه.
         /// </summary>
-        Task<EvidenceFileRef?> GetApprovedFileRefAsync(string submissionId, CancellationToken cancellationToken = default);
+        Task<EvidenceFile?> GetApprovedFileAsync(string submissionId, CancellationToken cancellationToken = default);
 
         /// <summary>حالة بنود الجهة وأدلَتها المعلَنة والمجازة على لوحها: هي ومسار التدقيق النهائي حساباً واحداً.</summary>
         Task<IReadOnlyDictionary<int, ItemBoardFacts>> GetItemBoardFactsAsync(
@@ -247,70 +250,17 @@ namespace ZU_AuditIntel.Web.Data
     }
 
     /// <summary>
-    /// مخزن أدلة على القرص: كل جهة ومجلدها في شجرة تحت App_Data/Evidence، والوثيقة تحمل المسار
-    /// النسبي فقط. الاسم المولَّد عشوائي حتى لا يكتب ملفان متماثلَي الاسم فوق بعضهما ولا يُقرأ مسار
-    /// خارج المخزن.
-    /// </summary>
-    public sealed class EvidenceStorage
-    {
-        public EvidenceStorage(IWebHostEnvironment env)
-        {
-            Root = Path.Combine(env.ContentRootPath, "App_Data", "Evidence");
-            Directory.CreateDirectory(Root);
-        }
-
-        public string Root { get; }
-
-        public string Store(string departmentId, int auditItemId, string extension, byte[] bytes)
-        {
-            var folder = Path.Combine(Root, Sanitize(departmentId), auditItemId.ToString());
-            Directory.CreateDirectory(folder);
-
-            var fileName = $"{Guid.NewGuid():N}{Sanitize(extension)}";
-            File.WriteAllBytes(Path.Combine(folder, fileName), bytes);
-            return Path.GetRelativePath(Root, Path.Combine(folder, fileName)).Replace('\\', '/');
-        }
-
-        /// <summary>المسار النسبي يأتي من الوثيقة، فلا يُقبل منه الخروج من جذر المخزن لو كُتب يدوياً.</summary>
-        public string FullPath(string relativePath)
-        {
-            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Root));
-            var full = Path.GetFullPath(Path.Combine(root, relativePath));
-
-            return full.Equals(root, StringComparison.OrdinalIgnoreCase)
-                || full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
-                ? full
-                : string.Empty;
-        }
-
-        public byte[]? Read(string relativePath)
-        {
-            var full = FullPath(relativePath);
-            return full.Length > 0 && File.Exists(full) ? File.ReadAllBytes(full) : null;
-        }
-
-        public void Delete(string relativePath)
-        {
-            var full = FullPath(relativePath);
-            if (full.Length > 0 && File.Exists(full))
-                File.Delete(full);
-        }
-
-        private static string Sanitize(string value) =>
-            string.Concat(value.Where(c => !Path.GetInvalidFileNameChars().Contains(c) && c != '/' && c != '\\'));
-    }
-
-    /// <summary>
     /// مخزن الأدلة على Firestore: ملف الدليل الواحد وثيقةٌ في <c>submissions</c> تحمل قرار الوكيل
-    /// وقرار التدقيق النهائي معاً. كل استعلام هنا شرطٌ واحد على حقلٍ علوي — جهة، أو بند، أو قرار —
-    /// والترتيب والتجميع بعد ذلك في الذاكرة، فلا حاجة إلى فهرس مركّب لا سبيل إلى إنشائه.
+    /// وقرار التدقيق النهائي معاً، وبايتاته في دلو خارجي لا على قرص التطبيق. كل استعلام هنا شرطٌ
+    /// واحد على حقلٍ علوي — جهة، أو بند، أو قرار — والترتيب والتجميع بعد ذلك في الذاكرة، فلا حاجة
+    /// إلى فهرس مركّب لا سبيل إلى إنشائه.
     ///
     /// لا عدّادات حالة في وثيقة البند: الحالة تُشتق من صفوف ملفات البند وقت القراءة، فعدّادٌ يُنسى
     /// تحديثه رقمٌ خاطئ على شاشة تدقيق، والقرارات نفسها هي ما يوقّع عليه البشر لا ما يُشتق منها.
     /// </summary>
     public sealed class FirestoreEvidenceStore(
         FirestoreDb firestore,
-        EvidenceStorage storage,
+        EvidenceBlobStorage storage,
         INotificationStore notifications) : IEvidenceStore
     {
         /// <summary>أقصى ما تستوعبه دفعة كتابة واحدة، مع هامش لما يتّسع له النداء من تفرّعات.</summary>
@@ -324,7 +274,9 @@ namespace ZU_AuditIntel.Web.Data
             NewEvidenceUpload upload,
             CancellationToken cancellationToken = default)
         {
-            var relativePath = storage.Store(upload.DepartmentId, upload.AuditItemId, upload.Extension, upload.Bytes);
+            // المفتاح شجرةُ الجهة والبند نفسها التي كانت على القرص، فقيمة storedPath لا تتغيّر دلالتها.
+            var key = await storage.PutAsync(
+                upload.DepartmentId, upload.AuditItemId, upload.Extension, upload.Bytes, cancellationToken);
 
             var submission = new EvidenceSubmission
             {
@@ -333,7 +285,7 @@ namespace ZU_AuditIntel.Web.Data
                 FileName = upload.FileName,
                 Extension = upload.Extension,
                 FileSize = upload.Bytes.LongLength,
-                StoredPath = relativePath,
+                StoredPath = key,
                 UploaderEmployeeId = upload.UploaderEmployeeId,
                 UploaderName = upload.UploaderName,
                 UploadedAt = DateTime.Now,
@@ -374,7 +326,9 @@ namespace ZU_AuditIntel.Web.Data
                 return;
 
             await reference.DeleteAsync(precondition: null, cancellationToken: cancellationToken);
-            storage.Delete(submission.StoredPath);
+
+            // المحو بعد حذف الوثيقة: تعطلُ الشبكة يترك بايتات يتيمة في الدلو، لا وثيقةً تقرأ ملفاً لا وجود له.
+            await storage.DeleteAsync(submission.StoredPath, cancellationToken);
         }
 
         public async Task DeleteForItemAsync(int auditItemId, CancellationToken cancellationToken = default)
@@ -390,7 +344,7 @@ namespace ZU_AuditIntel.Web.Data
             await batch.CommitAsync(cancellationToken);
 
             foreach (var snapshot in documents)
-                storage.Delete(snapshot.GetValue<string>("storedPath"));
+                await storage.DeleteAsync(snapshot.GetValue<string>("storedPath"), cancellationToken);
         }
 
         public async Task InvalidateItemOutcomeAsync(int auditItemId, CancellationToken cancellationToken = default)
@@ -488,18 +442,20 @@ namespace ZU_AuditIntel.Web.Data
             var snapshot = await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken);
 
             // الوثيقة إن لم تكن فهي محذوفة: تقرأ null لا تستثني، فنقطة الملفات تردّ بأربعٍ لا وجدت.
-            return snapshot.Exists ? storage.Read(snapshot.GetValue<string>("storedPath")) : null;
+            return snapshot.Exists
+                ? await storage.GetAsync(snapshot.GetValue<string>("storedPath"), cancellationToken)
+                : null;
         }
 
-        public Task<EvidenceFileRef?> GetFileRefAsync(
+        public Task<EvidenceFile?> GetFileAsync(
             string submissionId,
-            CancellationToken cancellationToken = default) => LoadFileRefAsync(submissionId, false, cancellationToken);
+            CancellationToken cancellationToken = default) => LoadFileAsync(submissionId, false, cancellationToken);
 
-        public Task<EvidenceFileRef?> GetApprovedFileRefAsync(
+        public Task<EvidenceFile?> GetApprovedFileAsync(
             string submissionId,
-            CancellationToken cancellationToken = default) => LoadFileRefAsync(submissionId, true, cancellationToken);
+            CancellationToken cancellationToken = default) => LoadFileAsync(submissionId, true, cancellationToken);
 
-        private async Task<EvidenceFileRef?> LoadFileRefAsync(
+        private async Task<EvidenceFile?> LoadFileAsync(
             string submissionId,
             bool approvedOnly,
             CancellationToken cancellationToken)
@@ -511,10 +467,12 @@ namespace ZU_AuditIntel.Web.Data
             if (submission is null || (approvedOnly && submission.FinalOutcome != FinalOutcome.Approved))
                 return null;
 
-            var full = storage.FullPath(submission.StoredPath);
-            return full.Length > 0 && File.Exists(full)
-                ? new EvidenceFileRef(full, submission.FileName, submission.Extension, submission.DepartmentId)
-                : null;
+            var bytes = await storage.GetAsync(submission.StoredPath, cancellationToken);
+
+            // بايتاتٌ لم ترجع = مفتاحٌ مسحوب من الدلو: نفس الجواب الذي يردّ به الحذف قبل هذه القراءة.
+            return bytes is null
+                ? null
+                : new EvidenceFile(bytes, submission.FileName, submission.Extension, submission.DepartmentId);
         }
 
         public async Task<IReadOnlyList<ReviewItemRow>> GetReviewBoardAsync(

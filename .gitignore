@@ -14,8 +14,6 @@ obj/
 *.db-wal
 *.db.bak*
 
-## مخزن ملفات الأدلة على القرص (يُبنى عند أول رفع)
-App_Data/
 # Local Vector Storage and Scratch
 chroma_db_storage/
 scratch/

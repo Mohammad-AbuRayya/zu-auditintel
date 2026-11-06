@@ -23,7 +23,7 @@ namespace ZU_AuditIntel.Web.Endpoints
             IEvidenceStore store,
             bool download = false)
         {
-            var file = await store.GetFileRefAsync(submissionId);
+            var file = await store.GetFileAsync(submissionId);
             if (file is null)
                 return Results.NotFound();
 
@@ -36,7 +36,7 @@ namespace ZU_AuditIntel.Web.Endpoints
                 : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
             // الاسم الأصلي يُرسَل مع التنزيل فقط، وإلا صار المتصفح يُنزّل الـ PDF بدل عرضه في تاب.
-            return Results.File(file.FullPath, contentType, download ? file.FileName : null, enableRangeProcessing: true);
+            return Results.File(file.Bytes, contentType, download ? file.FileName : null);
         }
     }
 }

@@ -50,7 +50,7 @@ namespace ZU_AuditIntel.Web.Models
         [FirestoreProperty("fileSize")]
         public long FileSize { get; set; }
 
-        /// <summary>مسار نسبي داخل مخزن الأدلة، فلا ينكسر النقل بين جهاز وآخر.</summary>
+        /// <summary>مفتاح البايتات في مخزن الملفات: {جهة}/{بند}/{اسم مولَّد}{امتداد}، وهو shape المسار النسبي القديم.</summary>
         [FirestoreProperty("storedPath")]
         public string StoredPath { get; set; } = "";
 

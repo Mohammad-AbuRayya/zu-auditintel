@@ -24,7 +24,7 @@ namespace ZU_AuditIntel.Web.Endpoints
         {
             // لا Forbid هنا: ما لم يُعتمد ليس هنا، والفرق بين «ليس لك» و«ليس موجوداً» سؤال لا يجوز
             // أن تُجيبه شاشةٌ لا تملك أن تعرف كم بنداً ما زال مفتوحاً في جامعة كاملة.
-            var file = await store.GetApprovedFileRefAsync(submissionId);
+            var file = await store.GetApprovedFileAsync(submissionId);
             if (file is null)
                 return Results.NotFound();
 
@@ -33,7 +33,7 @@ namespace ZU_AuditIntel.Web.Endpoints
                 : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
             // الاسم الأصلي يُرسَل مع التنزيل فقط، فغيره يجعل المتصفح ينزّل الـ PDF بدل عرضه في تاب.
-            return Results.File(file.FullPath, contentType, download ? file.FileName : null, enableRangeProcessing: true);
+            return Results.File(file.Bytes, contentType, download ? file.FileName : null);
         }
     }
 }
