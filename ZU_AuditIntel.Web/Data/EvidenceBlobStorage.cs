@@ -17,7 +17,7 @@ namespace ZU_AuditIntel.Web.Data
         public string Bucket { get; set; } = "";
 
         /// <summary>نهاية Backblaze B2 المتوافقة مع S3؛ تغيّرها وحده ينقل المخزن إلى مزوّد آخر.</summary>
-        public string Endpoint { get; set; } = "https://s3.us-west-004.backblazeb2.com";
+        public string Endpoint { get; set; } = "https://s3.us-east-005.backblazeb2.com";
 
         /// <summary>ملف {accessKeyId, secretAccessKey} خارج المستودع، أو يُترك فارغاً فتُقرأ المتغيّرات.</summary>
         public string CredentialsPath { get; set; } = "";
