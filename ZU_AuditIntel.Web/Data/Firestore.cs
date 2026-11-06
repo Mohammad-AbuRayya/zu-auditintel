@@ -5,15 +5,21 @@ using Microsoft.Extensions.Options;
 namespace ZU_AuditIntel.Web.Data
 {
     /// <summary>
-    /// قسم Firestore في appsettings.json. المفتاح لا يدخل المستودع: مسارُه يُذكر هنا وحده،
-    /// ومتى تُرك فارغاً قرأت Google المتغيّر GOOGLE_APPLICATION_CREDENTIALS نيابةً عنه.
+    /// قسم Firestore في appsettings.json. المفتاح لا يدخل المستودع: على الجهاز المطوّر يُذكر
+    /// مسارُه، وعلى منصّة الاستضافة يُذكر محتواه في متغيّر بيئة، ومتى تُرك الاثنان فارغين
+    /// قرأت Google المتغيّر GOOGLE_APPLICATION_CREDENTIALS نيابةً عنها.
     /// </summary>
     public sealed class FirestoreOptions
     {
         public const string SectionName = "Firestore";
 
         public string ProjectId { get; set; } = "zu-autointellgent";
+
+        /// <summary>مسار ملف المفتاح على هذا الجهاز؛ يُترك فارغاً في النشر بلا قرص.</summary>
         public string CredentialsPath { get; set; } = "";
+
+        /// <summary>محتوى المفتاح نفسه، وهو ما تعطي المنصات المستضيفة سرّها به: قيمة متغيّر بيئة.</summary>
+        public string CredentialsJson { get; set; } = "";
     }
 
     /// <summary>أسماء المجموعات كما زرعها مصدّر الكتالوج، فتكون مرجعاً واحداً لا حرفاً مكتوباً في كل مخزن.</summary>
@@ -39,11 +45,17 @@ namespace ZU_AuditIntel.Web.Data
             {
                 var options = sp.GetRequiredService<IOptions<FirestoreOptions>>().Value;
 
-                // المسار يُحمَّل لا يُمرَّر إلى CredentialsPath: تلك خاصية مهجورة في الحزمة، والاعتماد
-                // الصريح هو ما توصي به. ومتى تُرِكَ المسار فارغاً بقي السقوط إلى متغيّر البيئة.
-                var credential = string.IsNullOrWhiteSpace(options.CredentialsPath)
-                    ? null
-                    : CredentialFactory.FromFile<ServiceAccountCredential>(options.CredentialsPath).ToGoogleCredential();
+                // المفتاح يُحمَّل لا يُمرَّر إلى خاصية CredentialsPath المهجورة في الحزمة. ثلاثة مصادر
+                // بالترتيب: محتوى في متغيّر بيئة (وهو ما تعطي به منصّة الاستضافة سرّها)، ثم ملف على
+                // القرص (وهو وضع الجهاز المطوّر)، ثم discovery القياسية من حزمة Google نفسها.
+                GoogleCredential? credential = null;
+
+                if (!string.IsNullOrWhiteSpace(options.CredentialsJson))
+                    credential = CredentialFactory
+                        .FromJson<ServiceAccountCredential>(options.CredentialsJson).ToGoogleCredential();
+                else if (!string.IsNullOrWhiteSpace(options.CredentialsPath))
+                    credential = CredentialFactory
+                        .FromFile<ServiceAccountCredential>(options.CredentialsPath).ToGoogleCredential();
 
                 return new FirestoreDbBuilder
                 {

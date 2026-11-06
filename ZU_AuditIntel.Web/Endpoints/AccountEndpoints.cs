@@ -35,11 +35,21 @@ namespace ZU_AuditIntel.Web.Endpoints
         private static async Task<IResult> LoginAsync(
             HttpContext http,
             IAccountDirectory directory,
+            IConfiguration config,
             [FromForm] string? employeeId,
             [FromForm] string? password)
         {
             var user = await directory.AuthenticateAsync(employeeId ?? "", password ?? "", http.RequestAborted);
             if (user is null)
+                return Results.Redirect("/login?error=invalid");
+
+            // الكلمة الأولية لكل حساب مزروع منشورة في README العام، فعلى خادمٍ إنترنت لا يُقبل
+            // صاحبُها حتى يستلمها هو. قائمةُ أرقام من البيئة تضبط من يُقبل، ومتى تُركت فارغة —
+            // وهي حالة الجهاز المطوّر — بقي المسار بلا قيد.
+            var allowlist = (config["Audit:LoginAllowlist"] ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (allowlist.Length > 0 && !allowlist.Contains(user.EmployeeId))
                 return Results.Redirect("/login?error=invalid");
 
             var principal = AuditClaims.ToPrincipal(user);

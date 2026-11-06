@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
@@ -20,6 +21,21 @@ builder.Services.AddRazorComponents()
 builder.Services.AddLocalization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
+
+// المنصّات المستضيفة تنهي TLS عند وسيطها ثم تدفع إلى الحاوية طلباً مجرّد http على المنفذ الذي
+// يعطيها المتغيّر PORT. بلا قراءة ترويسات التحويل يظنّ التطبيق أنه لا https فيه إطلاقاً: فإما
+// أعاد التوجيه إلى منفذٍ لا يسمعه الوسيط، أو أبى أن يصدّق كوكي الدخول الآمن لأن الطلب الداخل
+// غير مؤمّن — وهو ما يظهر للعميل كثروة دخولٍ لا تنتهي. الاعتراض مفتوح لأن الوسيط واحد وهو
+// المنصّة نفسها، ولا سبيل إلى وصولٍ مباشر إلى الحاوية يلتفّ عليه.
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
 
 // Firestore عميلٌ واحد في عمر العملية: قناة gRPC مُكلفة، والبناء من مفتاح الخدمة لا من سلسلة اتصال.
 builder.Services.AddAuditFirestore(builder.Configuration.GetSection(FirestoreOptions.SectionName));
@@ -112,6 +128,10 @@ builder.Services.AddHttpClient(AuditAiClient.ClientName, (sp, client) =>
 builder.Services.AddScoped<AuditAiClient>();
 
 var app = builder.Build();
+
+// أول الوسائط كلها: ما لم تُقرأ الترويسة قبل أن يُسأل «هل هذا https؟» فهي باطلة عند كل قرارٍ لاحق.
+if (!app.Environment.IsDevelopment())
+    app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
