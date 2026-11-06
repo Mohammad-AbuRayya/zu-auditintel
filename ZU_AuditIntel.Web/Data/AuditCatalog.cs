@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+using Google.Cloud.Firestore;
 using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Data
@@ -40,79 +40,108 @@ namespace ZU_AuditIntel.Web.Data
             CancellationToken cancellationToken = default);
     }
 
-    public sealed class EfAuditCatalog(IDbContextFactory<AppDbContext> contextFactory) : IAuditCatalog
+    /// <summary>
+    /// الكتالوج على Firestore: مجموعة وثائق «items» و«departments» تُقرأ مرة واحدة في عمر العملية
+    /// وتُخبَّ في نسخة واحدة لا تُبدَّل. الثوابت لا تتغيّر إلا بإعادة تصدير، فكل لوحة بعده تقرأ
+    /// من الذاكرة، ولا يستهلك عرضُ بندٍ قراءةً من السحابة.
+    /// </summary>
+    public sealed class FirestoreAuditCatalog(FirestoreDb firestore) : IAuditCatalog
     {
+        private sealed record Snapshot(
+            IReadOnlyDictionary<string, IReadOnlyList<AuditItemDefinition>> ItemsByDepartment,
+            IReadOnlyList<AuditItemIndexEntry> Index,
+            IReadOnlyList<AuditDepartment> Departments,
+            IReadOnlyDictionary<string, AuditDepartment> DepartmentsById);
+
+        private readonly SemaphoreSlim loadGate = new(1, 1);
+        private volatile Snapshot? snapshot;
+
         public async Task<IReadOnlyList<AuditItemDefinition>> GetItemsAsync(
             string departmentId,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-            var rows = await db.AuditItems.AsNoTracking()
-                .Where(i => i.DepartmentId == departmentId)
-                .OrderBy(i => i.SortOrder)
-                .Select(i => new
-                {
-                    i.Id,
-                    i.Title,
-                    i.IsoReference,
-                    i.Workflow,
-                    i.Category,
-                    Questions = i.Questions.OrderBy(q => q.SortOrder).Select(q => q.Text).ToList(),
-                    Evidence = i.EvidenceRequirements.OrderBy(e => e.SortOrder).Select(e => e.Text).ToList()
-                })
-                .ToListAsync(cancellationToken);
-
-            return rows
-                .Select((r, index) => new AuditItemDefinition(
-                    r.Id, index + 1, r.Title, r.IsoReference, r.Workflow, r.Category, r.Questions, r.Evidence))
-                .ToList();
+            var current = await LoadAsync(cancellationToken);
+            return current.ItemsByDepartment.GetValueOrDefault(departmentId, []);
         }
 
         public async Task<IReadOnlyList<AuditItemIndexEntry>> GetItemIndexAsync(
-            CancellationToken cancellationToken = default)
-        {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-            var rows = await db.AuditItems.AsNoTracking()
-                .OrderBy(i => i.DepartmentId).ThenBy(i => i.SortOrder)
-                .Select(i => new { i.DepartmentId, i.Title, i.IsoReference })
-                .ToListAsync(cancellationToken);
-
-            // الرقم ترتيبُ البند داخل جهته لا معرّفه، وهو نفسه الذي يُحسب في GetItemsAsync.
-            var index = new List<AuditItemIndexEntry>(rows.Count);
-            string? currentDepartment = null;
-            var number = 0;
-            foreach (var row in rows)
-            {
-                number = row.DepartmentId == currentDepartment ? number + 1 : 1;
-                currentDepartment = row.DepartmentId;
-                index.Add(new AuditItemIndexEntry(row.DepartmentId, number, row.Title, row.IsoReference));
-            }
-
-            return index;
-        }
+            CancellationToken cancellationToken = default) =>
+            (await LoadAsync(cancellationToken)).Index;
 
         public async Task<IReadOnlyList<AuditDepartment>> GetDepartmentsAsync(
-            CancellationToken cancellationToken = default)
-        {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            CancellationToken cancellationToken = default) =>
+            (await LoadAsync(cancellationToken)).Departments;
 
-            return await db.Departments.AsNoTracking()
-                .OrderBy(d => d.DepartmentName)
-                .Select(d => new AuditDepartment(d.DepartmentId, d.DepartmentName))
-                .ToListAsync(cancellationToken);
-        }
         public async Task<AuditDepartment?> GetDepartmentAsync(
             string departmentId,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var current = await LoadAsync(cancellationToken);
+            return current.DepartmentsById.GetValueOrDefault(departmentId);
+        }
 
-            return await db.Departments.AsNoTracking()
-                .Where(d => d.DepartmentId == departmentId)
-                .Select(d => new AuditDepartment(d.DepartmentId, d.DepartmentName))
-                .FirstOrDefaultAsync(cancellationToken);
+        private async Task<Snapshot> LoadAsync(CancellationToken cancellationToken)
+        {
+            if (snapshot is { } cached)
+                return cached;
+
+            await loadGate.WaitAsync(cancellationToken);
+            try
+            {
+                if (snapshot is { } twice)
+                    return twice;
+
+                var documents = await firestore.Collection(AuditCollections.Items).GetSnapshotAsync(cancellationToken);
+                var departments = await firestore.Collection(AuditCollections.Departments)
+                    .GetSnapshotAsync(cancellationToken);
+
+                var byDepartment = documents.Documents
+                    .Select(document => document.ConvertTo<AuditItem>()!)
+                    .GroupBy(item => item.DepartmentId)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => (IReadOnlyList<AuditItemDefinition>)group
+                            .OrderBy(item => item.SortOrder).ThenBy(item => item.Id)
+                            .Select((item, index) => new AuditItemDefinition(
+                                item.Id,
+                                index + 1,
+                                item.Title,
+                                item.IsoReference,
+                                item.Workflow,
+                                item.Category,
+                                item.Questions,
+                                item.RequiredEvidence))
+                            .ToList());
+
+                // الرقم ترتيبُ البند داخل جهته لا معرّفه، وهو نفسه الذي تُعرض به اللوحة.
+                var index = byDepartment
+                    .SelectMany(pair => pair.Value
+                        .OrderBy(definition => definition.Number)
+                        .Select(definition => new AuditItemIndexEntry(
+                            pair.Key, definition.Number, definition.Title, definition.IsoReference)))
+                    .OrderBy(entry => entry.DepartmentId, StringComparer.Ordinal)
+                    .ThenBy(entry => entry.Number)
+                    .ToList();
+
+                var names = departments.Documents
+                    .Select(document => new AuditDepartment(
+                        document.Id,
+                        document.GetValue<string>("departmentName")))
+                    .OrderBy(department => department.DepartmentName, StringComparer.Ordinal)
+                    .ToList();
+
+                snapshot = new Snapshot(
+                    byDepartment,
+                    index,
+                    names,
+                    names.ToDictionary(department => department.DepartmentId));
+
+                return snapshot;
+            }
+            finally
+            {
+                loadGate.Release();
+            }
         }
     }
 }

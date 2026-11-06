@@ -1,3 +1,6 @@
+using Google.Cloud.Firestore;
+using ZU_AuditIntel.Web.Data;
+
 namespace ZU_AuditIntel.Web.Models
 {
     /// <summary>
@@ -30,36 +33,55 @@ namespace ZU_AuditIntel.Web.Models
     /// الملاحظة) لا جملةً عربية جاهزة، فتُركَّب العبارة في لغة القارئ وقت العرض. لا علاقة له بغيره
     /// من الجداول: سجل يُقرأ ولا يُبنى عليه حساب، فيبقى بعد حذف الملف الذي تكلّم عنه.
     /// </summary>
+    [FirestoreData]
     public class Notification
     {
-        public int Id { get; set; }
+        [FirestoreDocumentId]
+        public string Id { get; set; } = "";
+
+        [FirestoreProperty("kind", ConverterType = typeof(FirestoreEnumNameConverter<NotificationKind>))]
         public NotificationKind Kind { get; set; }
 
         /// <summary>جهة البند، وهي مفتاح الرؤية: صاحب الجهة يقرأ إشعارات جهته وحدها.</summary>
+        [FirestoreProperty("departmentId")]
         public string DepartmentId { get; set; } = "";
+
+        [FirestoreProperty("departmentName")]
         public string DepartmentName { get; set; } = "";
 
+        [FirestoreProperty("itemTitle")]
         public string ItemTitle { get; set; } = "";
+
+        [FirestoreProperty("fileName")]
         public string? FileName { get; set; }
 
         /// <summary>من أحدث الحدث: رافع الملف، أو المدقق، أو من تجاوز البوابة. لا اسم لوكيل الفحص.</summary>
+        [FirestoreProperty("actorName")]
         public string? ActorName { get; set; }
 
         /// <summary>درجة الفحص الآلي حين وُجدت، أو سبب الرفض البشري، أو ملاحظة التجاوز.</summary>
+        [FirestoreProperty("agentScore")]
         public int? AgentScore { get; set; }
+
+        [FirestoreProperty("note")]
         public string? Note { get; set; }
 
+        [FirestoreProperty("createdAt", ConverterType = typeof(LocalTimeConverter))]
         public DateTime CreatedAt { get; set; }
-    }
 
-    /// <summary>
-    /// قراءة إشعار لحساب واحد: لكل صاحب حساب سجلّه، فلا يمحو فتحُ ممثل الجهة للصفحة إشعاراتِ
-    /// مدقّقها. المفتاح مركّب من الإشعار والحساب، فلا تتكرر قراءة واحدة.
-    /// </summary>
-    public class NotificationRead
-    {
-        public int NotificationId { get; set; }
-        public string EmployeeId { get; set; } = "";
-        public DateTime ReadAt { get; set; }
+        /// <summary>
+        /// من قرأ السطر من أصحاب الحسابات، أرقاماً لا سطراً مستقلاً لكل قراءة: لكل صاحب حساب
+        /// قرّاؤه، فلا يمحو فتحُ ممثل الجهة للصفحة إشعاراتِ مدقّقها.
+        /// </summary>
+        [FirestoreProperty("readBy")]
+        public List<string> ReadBy { get; set; } = [];
+
+        /// <summary>
+        /// دوائر الرؤية تُكتب وقت الحدث: «dept:…» لكل سطر، و«kind:Approved» لما أُغلق
+        /// معتمداً. تستعلام الصفحة بـ array-contains على حقلٍ واحد، فلا تحتاج فهرساً مركّباً
+        /// ولا سبيل إلى إنشاء فهرس كهذا بلا وصول إلى التحكّم.
+        /// </summary>
+        [FirestoreProperty("visibleTo")]
+        public List<string> VisibleTo { get; set; } = [];
     }
 }

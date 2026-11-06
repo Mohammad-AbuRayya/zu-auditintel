@@ -10,14 +10,14 @@ namespace ZU_AuditIntel.Web.Endpoints
     {
         public static IEndpointRouteBuilder MapBoardEvidenceEndpoints(this IEndpointRouteBuilder app)
         {
-            app.MapGet("/audit/evidence/{submissionId:int}", OpenAsync)
+            app.MapGet("/audit/evidence/{submissionId:regex(^[A-Za-z0-9_-]+$)}", OpenAsync)
                 .RequireAuthorization(AuthorizationPolicies.CanAudit);
 
             return app;
         }
 
         private static async Task<IResult> OpenAsync(
-            int submissionId,
+            string submissionId,
             HttpContext http,
             IEvidenceStore store,
             bool download = false)

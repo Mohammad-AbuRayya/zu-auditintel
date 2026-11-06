@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+using Google.Cloud.Firestore;
 using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Data
@@ -12,17 +12,21 @@ namespace ZU_AuditIntel.Web.Data
         Task SeedInitialUsersAsync(CancellationToken cancellationToken = default);
     }
 
-    public sealed class EfAccountDirectory(IDbContextFactory<AppDbContext> contextFactory) : IAccountDirectory
+    /// <summary>
+    /// دليل الحسابات على Firestore. مفتاح الوثيقة هو الرقم الوظيفي نفسه، فالدخول قراءة مباشرة
+    /// بـ <c>users/{employeeId}</c> بلا استعلام ولا فهرس مركّب. الرقم الوظيفي ثابت، فتبقى الوثيقة
+    /// واحدة طول عمر الحساب، وتغيير الكلمة يكتب أربعة حقول فقط ولا يمسّ ما عداه.
+    /// </summary>
+    public sealed class FirestoreAccountDirectory(FirestoreDb firestore) : IAccountDirectory
     {
+        private CollectionReference Users { get; } = firestore.Collection(AuditCollections.Users);
+
         public async Task<User?> AuthenticateAsync(string employeeId, string password, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(employeeId) || string.IsNullOrEmpty(password))
                 return null;
 
-            var normalized = employeeId.Trim();
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(
-                u => u.EmployeeId == normalized, cancellationToken);
+            var user = await LoadByEmployeeIdAsync(employeeId.Trim(), cancellationToken);
 
             // كلمة المرور الخاطئة تُعامل معاملة الرقم الوظيفي غير الموجود: لا تكشف أيّ الرقمين صحيح.
             if (user is null)
@@ -39,47 +43,63 @@ namespace ZU_AuditIntel.Web.Data
             if (normalized.Length == 0)
                 return null;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var user = await db.Users.AsNoTracking()
-                .FirstOrDefaultAsync(u => u.EmployeeId == normalized, cancellationToken);
+            var user = await LoadByEmployeeIdAsync(normalized, cancellationToken);
             return user?.Adjective;
         }
 
         public async Task<User?> FindByIdAsync(int userId, CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            // «id» رقم السطر الموروث من القاعدة القديمة، وهو وحده الذي يصلح لهذا البحث:
+            // مفتاح الوثيقة رقم وظيفي لا رقم سطر.
+            var snapshot = await Users.WhereEqualTo("id", (long)userId)
+                .Limit(1).GetSnapshotAsync(cancellationToken);
+            var document = snapshot.Documents.FirstOrDefault();
+
+            return document is null || !document.Exists ? null : document.ConvertTo<User>();
         }
 
         public async Task ChangePasswordAsync(User user, string newPassword, CancellationToken cancellationToken = default)
         {
             var hashed = PasswordHasher.Hash(newPassword);
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
 
-            db.Attach(user);
+            await Users.Document(user.EmployeeId).UpdateAsync(new Dictionary<string, object>
+            {
+                ["passwordSalt"] = hashed.Salt,
+                ["passwordHash"] = hashed.Hash,
+                ["passwordIterations"] = hashed.Iterations,
+                ["mustChangePassword"] = false
+            }, cancellationToken: cancellationToken);
+
             user.PasswordSalt = hashed.Salt;
             user.PasswordHash = hashed.Hash;
             user.PasswordIterations = hashed.Iterations;
             user.MustChangePassword = false;
-            await db.SaveChangesAsync(cancellationToken);
         }
 
         /// <summary>
-        /// الحسابات الأولية لا تُزرع عبر HasData لأن الملح عشوائي، فثبات الترحيل يتكسّر.
-        /// تُنشأ هنا عند الإقلاع بشكل متكرّر الآمن إن لم تكن موجودة.
+        /// الحسابات الأولية لا تُزرع من وثيقة مُعدّة، لأن الملح عشوائي فكل تكرار يولّد بصمة مختلفة.
+        /// تُنشأ هنا عند الإقلاع بشكل متكرّر الآمن: تُقرأ موجود الواجهة مرة، فلا تلمس الأداة حساباً
+        /// غيّر صاحبه كلمته ولا حساباً استُبدل اسمه. أرقام الأسطر مورثة، فالحساب الناقص يأخذ
+        /// رقمه بالترتيب نفسه ولا يتزحزح رقم حساب موجود.
         /// </summary>
         public async Task SeedInitialUsersAsync(CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var existing = new HashSet<string>(
+                (await Users.GetSnapshotAsync(cancellationToken)).Documents.Select(d => d.Id));
 
-            foreach (var seed in InitialAccounts)
+            var batch = firestore.StartBatch();
+            var added = 0;
+
+            for (var i = 0; i < InitialAccounts.Length; i++)
             {
-                if (await db.Users.AnyAsync(u => u.EmployeeId == seed.EmployeeId, cancellationToken))
+                var seed = InitialAccounts[i];
+                if (existing.Contains(seed.EmployeeId))
                     continue;
 
                 var hashed = PasswordHasher.Hash(seed.InitialPassword);
-                db.Users.Add(new User
+                batch.Set(Users.Document(seed.EmployeeId), new User
                 {
+                    Id = i + 1,
                     EmployeeId = seed.EmployeeId,
                     FullName = seed.FullName,
                     JobTitle = seed.JobTitle,
@@ -91,9 +111,20 @@ namespace ZU_AuditIntel.Web.Data
                     PasswordIterations = hashed.Iterations,
                     MustChangePassword = true
                 });
+                added++;
             }
 
-            await db.SaveChangesAsync(cancellationToken);
+            if (added > 0)
+                await batch.CommitAsync(cancellationToken);
+        }
+
+        private async Task<User?> LoadByEmployeeIdAsync(string employeeId, CancellationToken cancellationToken)
+        {
+            if (employeeId.Length == 0)
+                return null;
+
+            var snapshot = await Users.Document(employeeId).GetSnapshotAsync(cancellationToken);
+            return snapshot.Exists ? snapshot.ConvertTo<User>() : null;
         }
 
         // قاعدة صاحب المشروع: كل من مسمّاه «مسؤول كلية» من الكليات هو كادر أكاديمي، وبقية الحسابات موظفون.

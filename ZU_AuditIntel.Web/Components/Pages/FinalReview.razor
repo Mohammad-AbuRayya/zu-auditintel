@@ -721,10 +721,10 @@
     private int? ExpandedItem;
 
     /// <summary>الملف المفتوح تفاصيلُه داخل صندوقه: الحجم والتواريخ وما رصده الوكيل.</summary>
-    private int? ExpandedFile;
+    private string? ExpandedFile;
 
-    private readonly Dictionary<int, string> Notes = new();
-    private readonly HashSet<int> Rejecting = new();
+    private readonly Dictionary<string, string> Notes = new();
+    private readonly HashSet<string> Rejecting = new();
     private bool IsBusy;
     private string? Message;
     private string MessageClass = "alert-success";
@@ -890,9 +890,9 @@
         _ => "bg-success-subtle text-success-emphasis"
     };
 
-    private static string DownloadHref(int submissionId) => $"/review/evidence/{submissionId}?download=true";
+    private static string DownloadHref(string submissionId) => $"/review/evidence/{submissionId}?download=true";
 
-    private static string PreviewHref(int submissionId) => $"/review/evidence/{submissionId}";
+    private static string PreviewHref(string submissionId) => $"/review/evidence/{submissionId}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -989,7 +989,7 @@
     private void ToggleItem(int auditItemId) =>
         ExpandedItem = ExpandedItem == auditItemId ? null : auditItemId;
 
-    private void ToggleFile(int submissionId) =>
+    private void ToggleFile(string submissionId) =>
         ExpandedFile = ExpandedFile == submissionId ? null : submissionId;
 
     private async Task RefreshAsync()
@@ -1004,7 +1004,7 @@
         }
     }
 
-    private async Task ApproveAsync(int submissionId)
+    private async Task ApproveAsync(string submissionId)
     {
         if (!CanSign)
             return;
@@ -1023,7 +1023,7 @@
         }
     }
 
-    private async Task RejectAsync(int submissionId)
+    private async Task RejectAsync(string submissionId)
     {
         if (!CanSign)
             return;
@@ -1048,15 +1048,15 @@
         }
     }
 
-    private void ToggleReject(int submissionId)
+    private void ToggleReject(string submissionId)
     {
         if (!Rejecting.Remove(submissionId))
             Rejecting.Add(submissionId);
     }
 
-    private string GetNote(int submissionId) => Notes.GetValueOrDefault(submissionId, string.Empty);
+    private string GetNote(string submissionId) => Notes.GetValueOrDefault(submissionId, string.Empty);
 
-    private void SetNote(int submissionId, ChangeEventArgs args) =>
+    private void SetNote(string submissionId, ChangeEventArgs args) =>
         Notes[submissionId] = args.Value as string ?? string.Empty;
 
     private static string FormatSize(long bytes) => bytes switch

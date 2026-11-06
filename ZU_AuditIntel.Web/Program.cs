@@ -2,8 +2,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using ZU_AuditIntel.Web;
 using ZU_AuditIntel.Web.Components;
@@ -23,16 +21,17 @@ builder.Services.AddLocalization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
 
-var connectionString = builder.Configuration.GetConnectionString("AuditIntel")
-    ?? throw new InvalidOperationException("Connection string 'AuditIntel' is not configured.");
+// Firestore عميلٌ واحد في عمر العملية: قناة gRPC مُكلفة، والبناء من مفتاح الخدمة لا من سلسلة اتصال.
+builder.Services.AddAuditFirestore(builder.Configuration.GetSection(FirestoreOptions.SectionName));
 
-builder.Services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(connectionString));
-builder.Services.AddScoped<IAuditCatalog, EfAuditCatalog>();
-builder.Services.AddScoped<IAccountDirectory, EfAccountDirectory>();
+// الكتالوج ثابت لا تكتب فيه إلا أداة التصدير، فيُقرأ من السحابة مرة واحدة في عمر العملية ويبقى
+// في الذاكرة. أما الباقي فمتاجر جلسة: لا تحتفظ بشيء، فكل واحدة تُبنى مع الطلب.
+builder.Services.AddSingleton<IAuditCatalog, FirestoreAuditCatalog>();
+builder.Services.AddScoped<IAccountDirectory, FirestoreAccountDirectory>();
 builder.Services.AddSingleton<EvidenceStorage>();
-builder.Services.AddScoped<IEvidenceStore, EfEvidenceStore>();
-builder.Services.AddScoped<INotificationStore, EfNotificationStore>();
-builder.Services.AddScoped<IMessageStore, EfMessageStore>();
+builder.Services.AddScoped<IEvidenceStore, FirestoreEvidenceStore>();
+builder.Services.AddScoped<INotificationStore, FirestoreNotificationStore>();
+builder.Services.AddScoped<IMessageStore, FirestoreMessageStore>();
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -142,45 +141,11 @@ localizationOptions.RequestCultureProviders = new List<IRequestCultureProvider>
 
 app.UseRequestLocalization(localizationOptions);
 
-// SQLite بوضعه الافتراضي لا يحتمل قارئاً وكاتِباً معاً: لوحة الجهة تُعيد رسم نفسها أثناء حفظ
-// الملفات، فيمسك اتصالُ القراءة القفلَ المشترك ويرفض الحفظ بـ«database is locked». وضع Wal يفصل
-// بينهما، لكنه يُخزَّن في رأس الملف فالتحويل إليه يحتاج قفلاً استحواذياً؛ وإن كان تطبيقٌ آخر
-// ما زال ماسكاً القاعدة — نسخةٌ لم تُغلق بعد مثلاً — ترتدّ المحاولة، وهذا لا يبيح قتل التطبيق
-// عند الإقلاع: يبقى على وضعه ويُحوَّل في إقلاعٍ خالٍ.
-using (var startupConnection = new SqliteConnection(connectionString))
-{
-    startupConnection.Open();
-    startupConnection.DefaultTimeout = 5;
-    using var pragma = startupConnection.CreateCommand();
-    pragma.CommandText = "PRAGMA journal_mode=Wal";
-    try
-    {
-        if (string.Equals(pragma.ExecuteScalar()?.ToString(), "wal", StringComparison.OrdinalIgnoreCase))
-        {
-            pragma.CommandText = "PRAGMA synchronous=Normal";
-            pragma.ExecuteNonQuery();
-        }
-        else
-        {
-            app.Logger.LogWarning("تعذّر تحويل القاعدة إلى وضع Wal لأن تطبيقاً آخر يمسكها؛ بقيت على وضعها السابق.");
-        }
-    }
-    catch (SqliteException exception)
-    {
-        app.Logger.LogWarning(exception, "تعذّر تحويل القاعدة إلى وضع Wal؛ بقيت على وضعها السابق.");
-    }
-}
-
 using (var scope = app.Services.CreateScope())
 {
-    // بلا MigrateAsync لا يُبنى المخطط على جهازٍ جديد: القاعدة الحالية موجودة بجانب المشروع فينجح الإقلاع
-    // عليها وينكسر على أول نسخة نظيفة. الـ migrations تحمل معها زرع الكاتالوج (HasData + InsertData).
-    var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-    await using (var db = await contextFactory.CreateDbContextAsync())
-    {
-        await db.Database.MigrateAsync();
-    }
-
+    // الحسابات وحدها ما يُنشأ عند الإقلاع: مفتاح الوثيقة رقم وظيفي، فالناقص يُضاف دون أن يمسّ
+    // أحدٌ حساباً غيّر صاحبه كلمته. أما الكتالوج فثابت لا تكتب فيه إلا أداة التصدير، وإلا
+    // الزرع المعلّق في نموذج EF الذي يولّد ترحيلاً يمحو ما كتبه صاحب اللوحة بيده.
     var directory = scope.ServiceProvider.GetRequiredService<IAccountDirectory>();
     await directory.SeedInitialUsersAsync();
 }

@@ -1392,7 +1392,7 @@
     private async Task RemoveFileAsync(AuditItem item, UploadedEvidenceFile file)
     {
         item.Files.Remove(file);
-        if (file.SubmissionId > 0)
+        if (file.SubmissionId.Length > 0)
             await Evidence.DeleteAsync(file.SubmissionId);
         await MarkItemAsChangedAsync(item);
     }
@@ -1516,10 +1516,9 @@
                     break;
                 }
 
-                // رأس البند هو الموضع الوحيد الذي يُعرض أثناء التحليل، فمرحلة العمل تُكتب في ملاحظته.
-                item.ShortNote = string.IsNullOrWhiteSpace(snapshot.Message)
-                    ? "قيد الفحص الآلي…"
-                    : snapshot.Message!;
+                // رأس البند هو الموضع الوحيد الذي يُعرض أثناء التحليل، فمرحلة العمل ونسبتها تُكتبان في ملاحظته.
+                var stage = string.IsNullOrWhiteSpace(snapshot.Message) ? "قيد الفحص الآلي" : snapshot.Message!;
+                item.ShortNote = $"{stage} · {snapshot.Progress:0}%";
                 StateHasChanged();
                 await Task.Delay(TimeSpan.FromSeconds(Ai.Options.PollIntervalSeconds), budget.Token);
             }
@@ -1599,7 +1598,7 @@
     {
         foreach (var file in item.Files.Where(f => f.Inspection is null))
         {
-            var bytes = file.SubmissionId == 0 ? null : await Evidence.ReadBytesAsync(file.SubmissionId);
+            var bytes = file.SubmissionId.Length == 0 ? null : await Evidence.ReadBytesAsync(file.SubmissionId);
             file.Inspection = bytes is null
                 ? FileInspection.Unreadable("لم يعد الملف موجوداً في مخزن الأدلة، ارفعه من جديد.")
                 : file.Extension == ".pdf" ? InspectPdf(bytes) : InspectDocx(bytes);
@@ -1896,8 +1895,8 @@
 
     private sealed class UploadedEvidenceFile
     {
-        /// <summary>معرّف صف المخزن، صفر قبل أول حفظ.</summary>
-        public int SubmissionId { get; init; }
+        /// <summary>مفتاح وثيقة المخزن، فارغ قبل أول حفظ.</summary>
+        public string SubmissionId { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public long Size { get; init; }
         public string Extension { get; init; } = string.Empty;

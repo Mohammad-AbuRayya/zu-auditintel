@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using Microsoft.EntityFrameworkCore;
+using Google.Cloud.Firestore;
 using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Data
@@ -19,7 +19,7 @@ namespace ZU_AuditIntel.Web.Data
 
     /// <summary>سطر إشعار كما تعرضه الصفحة: أجزاء الحدث، ومعها هل قرأه هذا الحساب قبل اليوم.</summary>
     public sealed record NotificationRow(
-        int Id,
+        string Id,
         NotificationKind Kind,
         string DepartmentId,
         string DepartmentName,
@@ -43,96 +43,147 @@ namespace ZU_AuditIntel.Web.Data
 
         /// <summary>يفتح الصفحة فيقرأ صاحبها ما فيها: تُكتب قراءة لكل سطر ظاهر لم يُقرأ.</summary>
         Task MarkAllReadAsync(NotificationViewer viewer, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// سطر حدث يُكتب وقت وقوعه. المخزن هو من يحسب دوائر الرؤية من الجهة والقرار، فلا يكرّر
+        /// كاتبُ الحدث قاعدةً تخصّ طريقة القراءة ولا يكتب إشعاراً يراه من لا يجوز له.
+        /// </summary>
+        Task RecordAsync(Notification notification, CancellationToken cancellationToken = default);
     }
 
-    public sealed class EfNotificationStore(IDbContextFactory<AppDbContext> contextFactory) : INotificationStore
+    /// <summary>
+    /// سجل الإشعارات على Firestore. الرؤية حقلٌ مكتوب لا شرطٌ يُبنى: «dept:hr» و«kind:Approved»
+    /// داخل مصفوفة واحدة، فتُغني استعلامة array-contains مفردة عن فهرس مركّب، والترتيب في
+    /// الذاكرة على مئتي سطر لا أكثر.
+    /// </summary>
+    public sealed class FirestoreNotificationStore(FirestoreDb firestore) : INotificationStore
     {
         /// <summary>سقف ما تُعرضه الصفحة؛ السجل يطول مع رفع كل ملف، والصفحة للجديد لا لأرشيف كامل.</summary>
         public const int MaxRows = 200;
+
+        /// <summary>أقصى ما يُقرأ من الواجهة في زيارة صفحة: ما وراءه لا يُعرض ولا يُعدّ مقروءاً.</summary>
+        private const int ScanLimit = 2000;
+
+        private CollectionReference Notifications { get; } = firestore.Collection(AuditCollections.Notifications);
 
         public async Task<IReadOnlyList<NotificationRow>> ListAsync(
             NotificationViewer viewer,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var documents = await VisibleAsync(viewer, cancellationToken);
             var employeeId = viewer.EmployeeId;
 
-            return await Visible(db, viewer)
-                .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id)
-                .Take(MaxRows)
-                .Select(n => new NotificationRow(
-                    n.Id,
-                    n.Kind,
-                    n.DepartmentId,
-                    n.DepartmentName,
-                    n.ItemTitle,
-                    n.FileName,
-                    n.ActorName,
-                    n.AgentScore,
-                    n.Note,
-                    n.CreatedAt,
-                    !db.NotificationReads.Any(r => r.NotificationId == n.Id && r.EmployeeId == employeeId)))
-                .ToListAsync(cancellationToken);
+            var newest = documents
+                .Select(snapshot => (Notification: snapshot.ConvertTo<Notification>()!, DocId: snapshot.Id))
+                .OrderByDescending(pair => pair.Notification.CreatedAt)
+                .ThenByDescending(pair => pair.DocId, StringComparer.Ordinal)
+                .Take(MaxRows);
+
+            return newest
+                .Select(pair =>
+                {
+                    var n = pair.Notification;
+                    return new NotificationRow(
+                        pair.DocId,
+                        n.Kind,
+                        n.DepartmentId,
+                        n.DepartmentName,
+                        n.ItemTitle,
+                        n.FileName,
+                        n.ActorName,
+                        n.AgentScore,
+                        n.Note,
+                        n.CreatedAt,
+                        !n.ReadBy.Contains(employeeId));
+                })
+                .ToList();
         }
 
         public async Task<int> CountUnreadAsync(
-            NotificationViewer viewer,
-            CancellationToken cancellationToken = default)
+            NotificationViewer viewer, CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var employeeId = viewer.EmployeeId;
+            if (viewer.EmployeeId.Length == 0)
+                return 0;
 
-            return await Visible(db, viewer)
-                .Where(n => !db.NotificationReads.Any(r => r.NotificationId == n.Id && r.EmployeeId == employeeId))
-                .CountAsync(cancellationToken);
+            var documents = await VisibleAsync(viewer, cancellationToken);
+
+            return documents
+                .Select(snapshot => snapshot.ConvertTo<Notification>()!)
+                .Count(n => !n.ReadBy.Contains(viewer.EmployeeId));
         }
 
         public async Task MarkAllReadAsync(
-            NotificationViewer viewer,
-            CancellationToken cancellationToken = default)
+            NotificationViewer viewer, CancellationToken cancellationToken = default)
         {
             if (viewer.EmployeeId.Length == 0)
                 return;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var employeeId = viewer.EmployeeId;
-
-            var unread = await Visible(db, viewer)
-                .Where(n => !db.NotificationReads.Any(r => r.NotificationId == n.Id && r.EmployeeId == employeeId))
-                .Select(n => n.Id)
-                .ToListAsync(cancellationToken);
+            var unread = (await VisibleAsync(viewer, cancellationToken))
+                .Where(snapshot => !snapshot.ConvertTo<Notification>()!.ReadBy.Contains(viewer.EmployeeId))
+                .ToList();
 
             if (unread.Count == 0)
                 return;
 
-            var readAt = DateTime.Now;
-            db.NotificationReads.AddRange(unread.Select(id => new NotificationRead
+            var batch = firestore.StartBatch();
+            foreach (var snapshot in unread)
             {
-                NotificationId = id,
-                EmployeeId = employeeId,
-                ReadAt = readAt
-            }));
-            await db.SaveChangesAsync(cancellationToken);
+                batch.Update(snapshot.Reference, new Dictionary<string, object>
+                {
+                    ["readBy"] = FieldValue.ArrayUnion([viewer.EmployeeId])
+                });
+            }
+
+            await batch.CommitAsync(cancellationToken);
+        }
+
+        public async Task RecordAsync(Notification notification, CancellationToken cancellationToken = default)
+        {
+            notification.VisibleTo = Audience(notification.Kind, notification.DepartmentId);
+            notification.ReadBy = [];
+
+            var reference = notification.Id.Length == 0
+                ? Notifications.Document()
+                : Notifications.Document(notification.Id);
+
+            await reference.SetAsync(notification, SetOptions.Overwrite, cancellationToken);
         }
 
         /// <summary>
-        /// ما يحق لهذا الحساب رؤيته. من لا جهة له ولا صفة تفتح السجل كله لا يرى شيئاً بدل أن يرى
-        /// إشعارات جهة ليست جهته؛ وصاحب النتيجة استثناء واحد: يقرأ ما أُغلق نهائياً فقط.
+        /// دوائر من يحق له رؤية هذا السطر. جهةُ الحدث دائرته دائماً، و«kind:Approved» دائرة صاحب
+        /// النتيجة وحده، فهي الاستثناء الوحيد الذي يقرأ من خارج جهته: ما أُغلق نهائياً على مستوى
+        /// الجامعة. لا دائرة عامة تُكتب، فرئيس الوحدة ومدير النظام يقرآن بلا استعلام أصلاً.
         /// </summary>
-        private static IQueryable<Notification> Visible(AppDbContext db, NotificationViewer viewer)
+        private static List<string> Audience(NotificationKind kind, string departmentId)
         {
-            var query = db.Notifications.AsNoTracking();
+            var audience = new List<string> { $"dept:{departmentId}" };
+            if (kind == NotificationKind.Approved)
+                audience.Add("kind:Approved");
+
+            return audience;
+        }
+
+        /// <summary>
+        /// ما يحق لهذا الحساب رؤيته، استعلاماً واحداً بلا فهرس مركّب: من لا جهة له ولا صفة تفتح
+        /// السجل كله لا يرى شيئاً بدل أن يرى إشعارات جهة ليست جهته، ومن يقرأ الجامعة كلها بلا
+        /// شرط أصلاً فيكفيه ترتيبٌ على حقل واحد. المقروء سقفٌ واحد، والترتيب بعد ذلك في الذاكرة.
+        /// </summary>
+        private async Task<IReadOnlyList<DocumentSnapshot>> VisibleAsync(
+            NotificationViewer viewer, CancellationToken cancellationToken)
+        {
+            Query query;
 
             if (viewer.SeesAllDepartments)
-                return query;
+                query = Notifications.OrderByDescending("createdAt");
+            else if (viewer.DepartmentId is not null)
+                query = Notifications.WhereArrayContains("visibleTo", $"dept:{viewer.DepartmentId}");
+            else if (viewer.ResultsOnly)
+                query = Notifications.WhereArrayContains("visibleTo", "kind:Approved");
+            else
+                return [];
 
-            var departmentId = viewer.DepartmentId;
-            if (departmentId is not null)
-                return query.Where(n => n.DepartmentId == departmentId);
-
-            return viewer.ResultsOnly
-                ? query.Where(n => n.Kind == NotificationKind.Approved)
-                : query.Where(n => false);
+            var snapshot = await query.Limit(ScanLimit).GetSnapshotAsync(cancellationToken);
+            return snapshot.Documents;
         }
     }
 }

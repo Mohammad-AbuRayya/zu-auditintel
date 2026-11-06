@@ -1,10 +1,19 @@
+using Google.Cloud.Firestore;
+
 namespace ZU_AuditIntel.Web.Models
 {
+    /// <summary>جهة مدقَّقة. عدد بنودها محفوظ معها لأن شاشة الإحصائيات تقرأ جهاتٍ لا بنوداً.</summary>
+    [FirestoreData]
     public class Department
     {
+        [FirestoreProperty("departmentId")]
         public string DepartmentId { get; set; } = "";
+
+        [FirestoreProperty("departmentName")]
         public string DepartmentName { get; set; } = "";
-        public List<AuditItem> AuditItems { get; set; } = new();
+
+        [FirestoreProperty("itemCount")]
+        public int ItemCount { get; set; }
     }
 
     /// <summary>معرّفات الجهات الثابتة المستخدمة في الزرع وفي شاشات التدقيق.</summary>

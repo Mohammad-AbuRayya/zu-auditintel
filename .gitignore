@@ -1,4 +1,4 @@
-## Build output
+﻿## Build output
 bin/
 obj/
 
@@ -8,7 +8,7 @@ obj/
 *.suo
 ~$*
 
-## Local SQLite database (regenerate with: dotnet ef database update)
+## نسخة الكتالوج المحلية: لا يقرأها التطبيق، مصدر أداة تصدير Firestore وحدها
 *.db
 *.db-shm
 *.db-wal

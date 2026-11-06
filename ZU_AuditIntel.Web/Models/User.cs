@@ -1,3 +1,5 @@
+using Google.Cloud.Firestore;
+
 namespace ZU_AuditIntel.Web.Models
 {
     public enum AuditorRole
@@ -44,30 +46,48 @@ namespace ZU_AuditIntel.Web.Models
         AcademicStaff
     }
 
-    /// <summary>حساب مستخدم النظام، مربوط بالرقم الوظيفي وبالجهة عند الحاجة.</summary>
+    /// <summary>
+    /// حساب مستخدم، ووثيقته في Firestore مفتاحها رقمه الوظيفي. أسماء الخصائص هي أسماء الحقول
+    /// نفسها كما زرعها المصدّر، فلا خريطة أسماء بين الكود والقاعدة تُنسى عند التعديل.
+    /// </summary>
+    [FirestoreData]
     public class User
     {
+        [FirestoreProperty("id")]
         public int Id { get; set; }
+
+        [FirestoreProperty("employeeId")]
         public string EmployeeId { get; set; } = "";
 
         /// <summary>اسم الشخص نفسه، لا وظيفته: يظهر في السجل وفي بطاقة الهوية.</summary>
+        [FirestoreProperty("fullName")]
         public string FullName { get; set; } = "";
 
         /// <summary>المسمى الوظيفي صاحبُ الحساب («مسؤول دائرة…» ونحوه)، لا يُعرض مكان الاسم.</summary>
+        [FirestoreProperty("jobTitle")]
         public string JobTitle { get; set; } = "";
 
-        /// <summary>أكاديمي أم إداري؛ يُشتق من <see cref="JobTitle" /> عند الزراعة ويُخزن ليُقرأ منه.</summary>
+        /// <summary>أكاديمي أم إداري؛ يُشتق من <see cref="JobTitle" /> عند الزرع ويُخزن ليُقرأ منه.</summary>
+        [FirestoreProperty("adjective", ConverterType = typeof(FirestoreEnumNameConverter<StaffAdjective>))]
         public StaffAdjective Adjective { get; set; }
 
+        [FirestoreProperty("role", ConverterType = typeof(FirestoreEnumNameConverter<AuditorRole>))]
         public AuditorRole Role { get; set; }
 
         /// <summary>الجهة التي يخدمها الحساب؛ null لرئيس وحدة الجودة لأنه على مستوى الجامعة.</summary>
+        [FirestoreProperty("departmentId")]
         public string? DepartmentId { get; set; }
-        public Department? Department { get; set; }
 
+        [FirestoreProperty("passwordSalt")]
         public string PasswordSalt { get; set; } = "";
+
+        [FirestoreProperty("passwordHash")]
         public string PasswordHash { get; set; } = "";
+
+        [FirestoreProperty("passwordIterations")]
         public int PasswordIterations { get; set; }
+
+        [FirestoreProperty("mustChangePassword")]
         public bool MustChangePassword { get; set; }
     }
 }

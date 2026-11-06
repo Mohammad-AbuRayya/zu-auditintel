@@ -1,5 +1,6 @@
 using System.Security.Claims;
-using Microsoft.EntityFrameworkCore;
+using Google.Cloud.Firestore;
+using Grpc.Core;
 using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Data
@@ -51,7 +52,7 @@ namespace ZU_AuditIntel.Web.Data
         DateTime LastAt,
         int UnreadCount);
 
-    public sealed record MessageRow(int Id, bool IsMine, string SenderName, string Body, DateTime SentAt);
+    public sealed record MessageRow(string Id, bool IsMine, string SenderName, string Body, DateTime SentAt);
 
     /// <summary>المحادثة مفتوحة: طرفها الآخر وسطورها بالترتيب الزمني.</summary>
     public sealed record MessageThreadView(MessageContact Other, IReadOnlyList<MessageRow> Messages);
@@ -85,10 +86,22 @@ namespace ZU_AuditIntel.Web.Data
             CancellationToken cancellationToken = default);
     }
 
-    public sealed class EfMessageStore(IDbContextFactory<AppDbContext> contextFactory) : IMessageStore
+    /// <summary>
+    /// المحادثات على Firestore: وثيقة لكل زوج في <c>threads/{pairKey}</c> تحمل آخر ما قيل
+    /// وعدّادي غير المقروء، وسطور الرسائل في مجموعة فرعية تحتها. قائمة المحادثات تقرأ وثائق الأزواج
+    /// وحدها بـ array-contains على «participants»، فلا تنزل إلى الرسائل ولا تحتاج فهرساً مركّباً.
+    /// </summary>
+    public sealed class FirestoreMessageStore(FirestoreDb firestore) : IMessageStore
     {
-        /// <summary>سقف نص الرسالة، وهو نفسه سقف العمود في القاعدة.</summary>
+        /// <summary>سقف نص الرسالة، وهو نفسه سقف الحقل في الوثيقة.</summary>
         public const int MaxBodyLength = 2000;
+
+        /// <summary>أقصى ما تعرضه القائمة: الأحدث بالوقت، فالوثيقة واحدة لكل زوج وعلى أي حال لا تتجاوز العدد.</summary>
+        private const int MaxThreadsInList = 200;
+
+        private CollectionReference Threads { get; } = firestore.Collection(AuditCollections.Threads);
+        private CollectionReference Users { get; } = firestore.Collection(AuditCollections.Users);
+        private CollectionReference Departments { get; } = firestore.Collection(AuditCollections.Departments);
 
         public async Task<IReadOnlyList<MessageThreadRow>> ListThreadsAsync(
             MessageViewer viewer,
@@ -98,39 +111,37 @@ namespace ZU_AuditIntel.Web.Data
             if (me.Length == 0)
                 return [];
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var documents = await Threads
+                .WhereArrayContains("participants", me)
+                .Limit(MaxThreadsInList)
+                .GetSnapshotAsync(cancellationToken);
 
-            var rows = await db.MessageThreads.AsNoTracking()
-                .Where(t => t.EmployeeIdA == me || t.EmployeeIdB == me)
-                .OrderByDescending(t => t.LastMessageAt)
-                .Select(t => new
+            var threads = documents.Documents
+                .Select(snapshot => snapshot.ConvertTo<MessageThread>()!)
+                .Where(thread => thread.OtherOf(me) is not null)
+                // الفرز هنا لا في الاستعلام: ترتيب على حقل مع فلتر array-contains فهرسٌ مركّب،
+                // والفهارس المركّبة لا تُبنى بلا وحدة تحكم. والمحادثة عند صاحب حساب عشرات لا آلاف.
+                .OrderByDescending(thread => thread.LastMessageAt)
+                .ThenByDescending(thread => thread.OtherOf(me), StringComparer.Ordinal)
+                .ToList();
+
+            var people = await PeopleAsync(
+                threads.Select(thread => thread.OtherOf(me)!).Distinct().ToList(), cancellationToken);
+
+            return threads
+                .Where(thread => people.ContainsKey(thread.OtherOf(me)!))
+                .Select(thread =>
                 {
-                    Other = t.EmployeeIdA == me ? t.EmployeeIdB : t.EmployeeIdA,
-                    t.LastMessageAt,
-                    LastBody = t.Messages.OrderByDescending(m => m.SentAt).ThenByDescending(m => m.Id)
-                        .Select(m => m.Body).FirstOrDefault(),
-                    LastSender = t.Messages.OrderByDescending(m => m.SentAt).ThenByDescending(m => m.Id)
-                        .Select(m => m.SenderEmployeeId).FirstOrDefault(),
-                    Unread = t.Messages.Count(m => m.SenderEmployeeId != me && m.ReadAt == null)
-                })
-                .ToListAsync(cancellationToken);
-
-            var people = await PeopleAsync(db, rows.Select(r => r.Other).Distinct().ToList(), cancellationToken);
-
-            return rows
-                .Where(r => people.ContainsKey(r.Other))
-                .Select(r =>
-                {
-                    var other = people[r.Other];
+                    var other = people[thread.OtherOf(me)!];
                     return new MessageThreadRow(
-                        r.Other,
+                        other.EmployeeId,
                         other.FullName,
                         other.JobTitle,
                         other.DepartmentName,
-                        r.LastBody ?? "",
-                        r.LastSender == me,
-                        r.LastMessageAt,
-                        r.Unread);
+                        thread.LastBody,
+                        thread.LastSenderEmployeeId == me,
+                        thread.LastMessageAt,
+                        thread.UnreadFor(me));
                 })
                 .ToList();
         }
@@ -140,13 +151,13 @@ namespace ZU_AuditIntel.Web.Data
             if (employeeId.Length == 0)
                 return 0;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var documents = await Threads
+                .WhereArrayContains("participants", employeeId)
+                .GetSnapshotAsync(cancellationToken);
 
-            return await db.Messages.AsNoTracking()
-                .Where(m => m.ReadAt == null
-                    && m.SenderEmployeeId != employeeId
-                    && (m.Thread.EmployeeIdA == employeeId || m.Thread.EmployeeIdB == employeeId))
-                .CountAsync(cancellationToken);
+            return documents.Documents
+                .Select(snapshot => snapshot.ConvertTo<MessageThread>()!)
+                .Sum(thread => thread.UnreadFor(employeeId));
         }
 
         public async Task<IReadOnlyList<MessageContact>> ListContactsAsync(
@@ -157,32 +168,40 @@ namespace ZU_AuditIntel.Web.Data
             if (me.Length == 0)
                 return [];
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
             // من راسله سابقاً يبقى في القائمة ولو خرج من قواعد الدور، فيستطيع أن يرد عليه.
-            var partners = await db.MessageThreads.AsNoTracking()
-                .Where(t => t.EmployeeIdA == me || t.EmployeeIdB == me)
-                .Select(t => t.EmployeeIdA == me ? t.EmployeeIdB : t.EmployeeIdA)
-                .ToListAsync(cancellationToken);
+            var partnerDocuments = await Threads
+                .WhereArrayContains("participants", me)
+                .GetSnapshotAsync(cancellationToken);
 
-            var users = await db.Users.AsNoTracking()
-                .Where(u => u.EmployeeId != me)
-                .Select(u => new
-                {
-                    u.EmployeeId,
-                    u.FullName,
-                    u.JobTitle,
-                    u.Role,
-                    u.DepartmentId,
-                    DepartmentName = u.Department != null ? u.Department.DepartmentName : null
-                })
-                .ToListAsync(cancellationToken);
+            var partners = partnerDocuments.Documents
+                .Select(snapshot => snapshot.ConvertTo<MessageThread>()!.OtherOf(me))
+                .Where(other => other is not null)
+                .Select(other => other!)
+                .ToHashSet(StringComparer.Ordinal);
 
-            return users
-                .Where(u => partners.Contains(u.EmployeeId) || CanStart(viewer, u.Role, u.DepartmentId))
-                .Select(u => new MessageContact(u.EmployeeId, u.FullName, u.JobTitle, u.DepartmentId, u.DepartmentName, u.Role))
-                .OrderBy(c => Rank(c, viewer.DepartmentId))
-                .ThenBy(c => c.FullName, StringComparer.Ordinal)
+            var accounts = await Users.GetSnapshotAsync(cancellationToken);
+            var names = await DepartmentNamesAsync(
+                accounts.Documents
+                    .Select(snapshot => snapshot.ConvertTo<User>()!.DepartmentId)
+                    .Where(id => id is not null)
+                    .Select(id => id!)
+                    .ToList(),
+                cancellationToken);
+
+            return accounts.Documents
+                .Select(snapshot => snapshot.ConvertTo<User>()!)
+                .Where(user => user.EmployeeId != me)
+                .Where(user => partners.Contains(user.EmployeeId)
+                    || CanStart(viewer, user.Role, user.DepartmentId))
+                .Select(user => new MessageContact(
+                    user.EmployeeId,
+                    user.FullName,
+                    user.JobTitle,
+                    user.DepartmentId,
+                    user.DepartmentId is null ? null : names.GetValueOrDefault(user.DepartmentId),
+                    user.Role))
+                .OrderBy(contact => Rank(contact, viewer.DepartmentId))
+                .ThenBy(contact => contact.FullName, StringComparer.Ordinal)
                 .ToList();
         }
 
@@ -195,22 +214,16 @@ namespace ZU_AuditIntel.Web.Data
             if (me.Length == 0 || otherEmployeeId == me)
                 return null;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-            var key = PairKey(me, otherEmployeeId);
-            var threadId = await db.MessageThreads.AsNoTracking()
-                .Where(t => t.PairKey == key)
-                .Select(t => (int?)t.Id)
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (threadId is null)
+            var reference = Threads.Document(PairKey(me, otherEmployeeId));
+            var snapshot = await reference.GetSnapshotAsync(cancellationToken);
+            if (!snapshot.Exists)
                 return null;
 
-            var other = await PeopleAsync(db, [otherEmployeeId], cancellationToken);
+            var other = await PeopleAsync([otherEmployeeId], cancellationToken);
             if (!other.TryGetValue(otherEmployeeId, out var contact))
                 return null;
 
-            var messages = await ReadMessagesAsync(db, threadId.Value, me, cancellationToken);
+            var messages = await ReadMessagesAsync(reference, me, cancellationToken);
             return new MessageThreadView(contact, messages);
         }
 
@@ -226,107 +239,160 @@ namespace ZU_AuditIntel.Web.Data
             if (me.Length == 0 || otherEmployeeId == me || text.Length is 0 or > MaxBodyLength)
                 return null;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-            var recipient = await db.Users.AsNoTracking()
-                .Where(u => u.EmployeeId == otherEmployeeId)
-                .Select(u => new { u.EmployeeId, u.Role, u.DepartmentId })
-                .FirstOrDefaultAsync(cancellationToken);
-
-            if (recipient is null)
+            var recipientSnapshot = await Users.Document(otherEmployeeId).GetSnapshotAsync(cancellationToken);
+            if (!recipientSnapshot.Exists)
                 return null;
 
-            var key = PairKey(me, otherEmployeeId);
-            var thread = await db.MessageThreads.FirstOrDefaultAsync(t => t.PairKey == key, cancellationToken);
+            var recipient = recipientSnapshot.ConvertTo<User>()!;
+            var reference = Threads.Document(PairKey(me, otherEmployeeId));
+            var now = DateTime.Now;
+
+            var thread = (await reference.GetSnapshotAsync(cancellationToken)).ConvertTo<MessageThread>();
 
             if (thread is null)
             {
                 if (!CanStart(viewer, recipient.Role, recipient.DepartmentId))
                     return null;
 
-                var now = DateTime.Now;
                 var low = string.CompareOrdinal(me, otherEmployeeId) <= 0 ? me : otherEmployeeId;
                 var high = low == me ? otherEmployeeId : me;
 
                 thread = new MessageThread
                 {
-                    PairKey = key,
+                    PairKey = reference.Id,
                     EmployeeIdA = low,
                     EmployeeIdB = high,
+                    Participants = [low, high],
                     CreatedAt = now,
                     LastMessageAt = now
                 };
-                db.MessageThreads.Add(thread);
 
                 try
                 {
-                    await db.SaveChangesAsync(cancellationToken);
+                    // الإنشاء بشرط «غير موجودة»: محادثة فُتحت في اللحظة نفسها من نافذة أخرى لا تُنسخ،
+                    // بل تُقرأ هي كما هي.
+                    await reference.CreateAsync(thread, cancellationToken);
                 }
-                catch (DbUpdateException)
+                catch (RpcException exception)
+                    when (exception.StatusCode is StatusCode.FailedPrecondition or StatusCode.AlreadyExists)
                 {
-                    // محادثة فُتحت في اللحظة نفسها من نافذة أخرى: تُقرأ هي بدل إنشاء ثانية.
-                    db.Entry(thread).State = EntityState.Detached;
-                    thread = await db.MessageThreads.FirstAsync(t => t.PairKey == key, cancellationToken);
+                    thread = (await reference.GetSnapshotAsync(cancellationToken)).ConvertTo<MessageThread>()!;
                 }
             }
 
-            thread.LastMessageAt = DateTime.Now;
-            db.Messages.Add(new Message
+            thread.LastBody = text;
+            thread.LastSenderEmployeeId = me;
+            thread.LastMessageAt = now;
+            thread.BumpUnread(me);
+
+            var batch = firestore.StartBatch();
+            batch.Set(reference, thread, SetOptions.MergeAll);
+            batch.Set(reference.Collection(AuditCollections.Messages).Document(), new Message
             {
-                ThreadId = thread.Id,
                 SenderEmployeeId = me,
                 SenderName = viewer.FullName,
                 Body = text,
-                SentAt = thread.LastMessageAt
+                SentAt = now
             });
-            await db.SaveChangesAsync(cancellationToken);
+            await batch.CommitAsync(cancellationToken);
 
             return await GetThreadAsync(viewer, otherEmployeeId, cancellationToken);
         }
 
-        /// <summary>رسائل المحادثة بالترتيب، ثم تُعلَّم رسائل الطرف الآخر مقروءة في القاعدة.</summary>
-        private static async Task<IReadOnlyList<MessageRow>> ReadMessagesAsync(
-            AppDbContext db,
-            int threadId,
+        /// <summary>
+        /// سطور المحادثة بالترتيب، ثم يُصفَّر عدّاد غير المقروء للقارئ وحده. مفتاح الوثيقة المولّد
+        /// مرتّب زمنياً، فترتيب «sentAt» وحده يكفي، ولا يُقرأ شيء من غير ما وصل.
+        /// </summary>
+        private async Task<IReadOnlyList<MessageRow>> ReadMessagesAsync(
+            DocumentReference thread,
             string me,
             CancellationToken cancellationToken)
         {
-            var messages = await db.Messages.AsNoTracking()
-                .Where(m => m.ThreadId == threadId)
-                .OrderBy(m => m.SentAt).ThenBy(m => m.Id)
-                .Select(m => new { m.Id, m.SenderEmployeeId, m.SenderName, m.Body, m.SentAt })
-                .ToListAsync(cancellationToken);
+            var documents = await thread
+                .Collection(AuditCollections.Messages)
+                .OrderBy("sentAt")
+                .GetSnapshotAsync(cancellationToken);
 
-            var readAt = DateTime.Now;
-            await db.Messages
-                .Where(m => m.ThreadId == threadId && m.SenderEmployeeId != me && m.ReadAt == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(m => m.ReadAt, readAt), cancellationToken);
-
-            return messages
-                .Select(m => new MessageRow(m.Id, m.SenderEmployeeId == me, m.SenderName, m.Body, m.SentAt))
+            var rows = documents.Documents
+                .Select(snapshot =>
+                {
+                    var message = snapshot.ConvertTo<Message>()!;
+                    return new MessageRow(snapshot.Id, message.SenderEmployeeId == me,
+                        message.SenderName, message.Body, message.SentAt);
+                })
                 .ToList();
+
+            // الكتابة بعد القراءة: لا يمسّ التصفير إلا عدّاد من فتح، فبقاء الآخر شارةً في رقبته.
+            var snapshotThread = await thread.GetSnapshotAsync(cancellationToken);
+            var state = snapshotThread.ConvertTo<MessageThread>();
+            if (state is not null && state.UnreadFor(me) > 0)
+            {
+                state.ClearUnread(me);
+                await snapshotThread.Reference.UpdateAsync(new Dictionary<string, object>
+                {
+                    ["unreadForA"] = state.UnreadForA,
+                    ["unreadForB"] = state.UnreadForB
+                }, cancellationToken: cancellationToken);
+            }
+
+            return rows;
         }
 
-        private static async Task<Dictionary<string, MessageContact>> PeopleAsync(
-            AppDbContext db,
+        /// <summary>بطاقات الحسابات بالأرقام الوظيفية: قراءة مباشرة بمفتاح الوثيقة، بلا استعلام.</summary>
+        private async Task<Dictionary<string, MessageContact>> PeopleAsync(
             IReadOnlyList<string> employeeIds,
             CancellationToken cancellationToken)
         {
             if (employeeIds.Count == 0)
                 return new Dictionary<string, MessageContact>();
 
-            var people = await db.Users.AsNoTracking()
-                .Where(u => employeeIds.Contains(u.EmployeeId))
-                .Select(u => new MessageContact(
-                    u.EmployeeId,
-                    u.FullName,
-                    u.JobTitle,
-                    u.DepartmentId,
-                    u.Department != null ? u.Department.DepartmentName : null,
-                    u.Role))
-                .ToListAsync(cancellationToken);
+            var names = await DepartmentNamesAsync(
+                (await Task.WhenAll(employeeIds.Select(id =>
+                    Users.Document(id).GetSnapshotAsync(cancellationToken))))
+                .Where(snapshot => snapshot.Exists)
+                .Select(snapshot => snapshot.ConvertTo<User>()!.DepartmentId)
+                .Where(id => id is not null)
+                .Select(id => id!)
+                .ToList(),
+                cancellationToken);
 
-            return people.ToDictionary(p => p.EmployeeId);
+            var contacts = new Dictionary<string, MessageContact>();
+
+            foreach (var snapshot in await Task.WhenAll(employeeIds.Select(id =>
+                         Users.Document(id).GetSnapshotAsync(cancellationToken))))
+            {
+                if (!snapshot.Exists)
+                    continue;
+
+                var user = snapshot.ConvertTo<User>()!;
+                contacts[user.EmployeeId] = new MessageContact(
+                    user.EmployeeId,
+                    user.FullName,
+                    user.JobTitle,
+                    user.DepartmentId,
+                    user.DepartmentId is null ? null : names.GetValueOrDefault(user.DepartmentId),
+                    user.Role);
+            }
+
+            return contacts;
+        }
+
+        /// <summary>أسماء الجهات بالنصوص المحفوظة في وثائقها، لمن يظهر في بطاقة الطرف الآخر.</summary>
+        private async Task<Dictionary<string, string>> DepartmentNamesAsync(
+            IReadOnlyList<string> departmentIds,
+            CancellationToken cancellationToken)
+        {
+            var distinct = departmentIds.Distinct(StringComparer.Ordinal).ToList();
+            if (distinct.Count == 0)
+                return new Dictionary<string, string>();
+
+            var snapshots = await Task.WhenAll(distinct.Select(id =>
+                Departments.Document(id).GetSnapshotAsync(cancellationToken)));
+
+            return snapshots
+                .Where(snapshot => snapshot.Exists)
+                .ToDictionary(snapshot => snapshot.Id,
+                    snapshot => snapshot.GetValue<string>("departmentName"));
         }
 
         /// <summary>

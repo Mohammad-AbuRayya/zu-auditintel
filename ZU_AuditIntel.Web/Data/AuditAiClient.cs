@@ -14,7 +14,6 @@ namespace ZU_AuditIntel.Web.Data
         public int TimeoutSeconds { get; set; } = 25;
         public int PollIntervalSeconds { get; set; } = 2;
         public int PollBudgetSeconds { get; set; } = 300;
-        public int MaxRetrievals { get; set; } = 6;
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
-using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using Google.Cloud.Firestore;
 using ZU_AuditIntel.Web.Models;
 
 namespace ZU_AuditIntel.Web.Data
@@ -82,7 +83,7 @@ namespace ZU_AuditIntel.Web.Data
 
     /// <summary>ملف دليل داخل بند الجهة في شاشة التدقيق النهائي، بقرار الوكيل وقراري معاً.</summary>
     public sealed record ReviewFileRow(
-        int SubmissionId,
+        string SubmissionId,
         int AuditItemId,
         string FileName,
         string Extension,
@@ -178,7 +179,7 @@ namespace ZU_AuditIntel.Web.Data
             string departmentId,
             CancellationToken cancellationToken = default);
 
-        Task DeleteAsync(int submissionId, CancellationToken cancellationToken = default);
+        Task DeleteAsync(string submissionId, CancellationToken cancellationToken = default);
         Task DeleteForItemAsync(int auditItemId, CancellationToken cancellationToken = default);
 
         /// <summary>يبطل قرار الوكيل عن بنود لم يعد ملفها مكتملاً، فينتظر فحصاً جديداً.</summary>
@@ -210,16 +211,16 @@ namespace ZU_AuditIntel.Web.Data
             string actorEmployeeId,
             CancellationToken cancellationToken = default);
 
-        Task<byte[]?> ReadBytesAsync(int submissionId, CancellationToken cancellationToken = default);
+        Task<byte[]?> ReadBytesAsync(string submissionId, CancellationToken cancellationToken = default);
 
         /// <summary>مرجع ملف على القرص ليرسله نقاط الدخول مباشرة دون تحميله في الذاكرة.</summary>
-        Task<EvidenceFileRef?> GetFileRefAsync(int submissionId, CancellationToken cancellationToken = default);
+        Task<EvidenceFileRef?> GetFileRefAsync(string submissionId, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// مرجع ملفٍ وقّعه المدقّق البشري «مقبولاً» وحده: شاشة النتيجة النهائية لا تفتح ملفاً
         /// لم يُعتمد بعد، فلا رقم ملف عندها يكشف بنداً ما زال عند صاحبه.
         /// </summary>
-        Task<EvidenceFileRef?> GetApprovedFileRefAsync(int submissionId, CancellationToken cancellationToken = default);
+        Task<EvidenceFileRef?> GetApprovedFileRefAsync(string submissionId, CancellationToken cancellationToken = default);
 
         /// <summary>حالة بنود الجهة وأدلَتها المعلَنة والمجازة على لوحها: هي ومسار التدقيق النهائي حساباً واحداً.</summary>
         Task<IReadOnlyDictionary<int, ItemBoardFacts>> GetItemBoardFactsAsync(
@@ -232,7 +233,7 @@ namespace ZU_AuditIntel.Web.Data
             CancellationToken cancellationToken = default);
 
         Task ApplyFinalOutcomeAsync(
-            int submissionId,
+            string submissionId,
             FinalOutcome outcome,
             string? note,
             string reviewerEmployeeId,
@@ -246,8 +247,9 @@ namespace ZU_AuditIntel.Web.Data
     }
 
     /// <summary>
-    /// مخزن أدلة على القرص: كل جهة ومجلدها في شجرة تحت App_Data/Evidence، والجدول يحمل المسار النسبي فقط.
-    /// الاسم المولَّد عشوائي حتى لا يكتب ملفان متماثلَي الاسم فوق بعضهما ولا يُقرأ مسار خارج المخزن.
+    /// مخزن أدلة على القرص: كل جهة ومجلدها في شجرة تحت App_Data/Evidence، والوثيقة تحمل المسار
+    /// النسبي فقط. الاسم المولَّد عشوائي حتى لا يكتب ملفان متماثلَي الاسم فوق بعضهما ولا يُقرأ مسار
+    /// خارج المخزن.
     /// </summary>
     public sealed class EvidenceStorage
     {
@@ -269,7 +271,7 @@ namespace ZU_AuditIntel.Web.Data
             return Path.GetRelativePath(Root, Path.Combine(folder, fileName)).Replace('\\', '/');
         }
 
-        /// <summary>المسار النسبي يأتي من الجدول، فلا يُقبل منه الخروج من جذر المخزن لو كُتب يدوياً.</summary>
+        /// <summary>المسار النسبي يأتي من الوثيقة، فلا يُقبل منه الخروج من جذر المخزن لو كُتب يدوياً.</summary>
         public string FullPath(string relativePath)
         {
             var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Root));
@@ -298,17 +300,32 @@ namespace ZU_AuditIntel.Web.Data
             string.Concat(value.Where(c => !Path.GetInvalidFileNameChars().Contains(c) && c != '/' && c != '\\'));
     }
 
-    public sealed class EfEvidenceStore(
-        IDbContextFactory<AppDbContext> contextFactory,
-        EvidenceStorage storage) : IEvidenceStore
+    /// <summary>
+    /// مخزن الأدلة على Firestore: ملف الدليل الواحد وثيقةٌ في <c>submissions</c> تحمل قرار الوكيل
+    /// وقرار التدقيق النهائي معاً. كل استعلام هنا شرطٌ واحد على حقلٍ علوي — جهة، أو بند، أو قرار —
+    /// والترتيب والتجميع بعد ذلك في الذاكرة، فلا حاجة إلى فهرس مركّب لا سبيل إلى إنشائه.
+    ///
+    /// لا عدّادات حالة في وثيقة البند: الحالة تُشتق من صفوف ملفات البند وقت القراءة، فعدّادٌ يُنسى
+    /// تحديثه رقمٌ خاطئ على شاشة تدقيق، والقرارات نفسها هي ما يوقّع عليه البشر لا ما يُشتق منها.
+    /// </summary>
+    public sealed class FirestoreEvidenceStore(
+        FirestoreDb firestore,
+        EvidenceStorage storage,
+        INotificationStore notifications) : IEvidenceStore
     {
+        /// <summary>أقصى ما تستوعبه دفعة كتابة واحدة، مع هامش لما يتّسع له النداء من تفرّعات.</summary>
+        private const int BatchLimit = 400;
+
+        private CollectionReference Submissions { get; } = firestore.Collection(AuditCollections.Submissions);
+        private CollectionReference Items { get; } = firestore.Collection(AuditCollections.Items);
+        private CollectionReference Departments { get; } = firestore.Collection(AuditCollections.Departments);
+
         public async Task<EvidenceSubmission> SaveAsync(
             NewEvidenceUpload upload,
             CancellationToken cancellationToken = default)
         {
             var relativePath = storage.Store(upload.DepartmentId, upload.AuditItemId, upload.Extension, upload.Bytes);
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
             var submission = new EvidenceSubmission
             {
                 DepartmentId = upload.DepartmentId,
@@ -324,14 +341,15 @@ namespace ZU_AuditIntel.Web.Data
                 FinalOutcome = FinalOutcome.NotReviewed
             };
 
-            db.EvidenceSubmissions.Add(submission);
+            var reference = Submissions.Document();
+            submission.Id = reference.Id;
+            await reference.SetAsync(submission, SetOptions.Overwrite, cancellationToken);
 
             // الرفع حدث يخص الجهة كلها، فيسجَّل في سجلها ويظهر في صفحة إشعارات ممثلها ومدققها.
-            await NotifyItemAsync(
-                db, upload.AuditItemId, NotificationKind.Uploaded, upload.FileName, null,
+            await NotifyAsync(
+                upload.AuditItemId, NotificationKind.Uploaded, upload.FileName, null,
                 upload.UploaderName, null, submission.UploadedAt, cancellationToken);
 
-            await db.SaveChangesAsync(cancellationToken);
             return submission;
         }
 
@@ -339,58 +357,61 @@ namespace ZU_AuditIntel.Web.Data
             string departmentId,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var files = await FilesForDepartmentAsync(departmentId, cancellationToken);
 
-            return await db.EvidenceSubmissions.AsNoTracking()
-                .Where(s => s.DepartmentId == departmentId)
-                .OrderBy(s => s.AuditItemId).ThenBy(s => s.UploadedAt)
-                .ToListAsync(cancellationToken);
+            return files
+                .OrderBy(s => s.AuditItemId)
+                .ThenBy(s => s.UploadedAt)
+                .ThenBy(s => s.Id, StringComparer.Ordinal)
+                .ToList();
         }
 
-        public async Task DeleteAsync(int submissionId, CancellationToken cancellationToken = default)
+        public async Task DeleteAsync(string submissionId, CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var submission = await db.EvidenceSubmissions
-                .FirstOrDefaultAsync(s => s.Id == submissionId, cancellationToken);
+            var reference = Submissions.Document(submissionId);
+            var submission = (await reference.GetSnapshotAsync(cancellationToken)).ConvertTo<EvidenceSubmission>();
             if (submission is null)
                 return;
 
-            db.EvidenceSubmissions.Remove(submission);
-            await db.SaveChangesAsync(cancellationToken);
+            await reference.DeleteAsync(precondition: null, cancellationToken: cancellationToken);
             storage.Delete(submission.StoredPath);
         }
 
         public async Task DeleteForItemAsync(int auditItemId, CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var submissions = await db.EvidenceSubmissions
-                .Where(s => s.AuditItemId == auditItemId)
-                .ToListAsync(cancellationToken);
-            if (submissions.Count == 0)
+            var documents = await DocumentsForItemAsync(auditItemId, cancellationToken);
+            if (documents.Count == 0)
                 return;
 
-            db.EvidenceSubmissions.RemoveRange(submissions);
-            await db.SaveChangesAsync(cancellationToken);
-            foreach (var submission in submissions)
-                storage.Delete(submission.StoredPath);
+            var batch = firestore.StartBatch();
+            foreach (var snapshot in documents)
+                batch.Delete(snapshot.Reference);
+
+            await batch.CommitAsync(cancellationToken);
+
+            foreach (var snapshot in documents)
+                storage.Delete(snapshot.GetValue<string>("storedPath"));
         }
 
         public async Task InvalidateItemOutcomeAsync(int auditItemId, CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            await db.EvidenceSubmissions
-                .Where(s => s.AuditItemId == auditItemId && s.AgentOutcome != AgentOutcome.NotChecked)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(s => s.AgentOutcome, AgentOutcome.NotChecked)
-                    .SetProperty(s => s.AgentScore, (int?)null)
-                    .SetProperty(s => s.AgentDefectRate, (int?)null)
-                    .SetProperty(s => s.AgentFindings, (string?)null)
-                    .SetProperty(s => s.AgentCheckedAt, (DateTime?)null)
-                    .SetProperty(s => s.FinalOutcome, FinalOutcome.NotReviewed)
-                    .SetProperty(s => s.FinalNote, (string?)null)
-                    .SetProperty(s => s.ReviewerEmployeeId, (string?)null)
-                    .SetProperty(s => s.ReviewerName, (string?)null)
-                    .SetProperty(s => s.ReviewedAt, (DateTime?)null), cancellationToken);
+            var documents = (await DocumentsForItemAsync(auditItemId, cancellationToken))
+                .Where(snapshot => snapshot.GetValue<string>("agentOutcome") != nameof(AgentOutcome.NotChecked))
+                .ToList();
+
+            await UpdateAsync(documents, new Dictionary<string, object?>
+            {
+                ["agentOutcome"] = nameof(AgentOutcome.NotChecked),
+                ["agentScore"] = null,
+                ["agentDefectRate"] = null,
+                ["agentFindings"] = null,
+                ["agentCheckedAt"] = null,
+                ["finalOutcome"] = nameof(FinalOutcome.NotReviewed),
+                ["finalNote"] = null,
+                ["reviewerEmployeeId"] = null,
+                ["reviewerName"] = null,
+                ["reviewedAt"] = null
+            }, cancellationToken);
         }
 
         public async Task SetItemEvidenceAsync(
@@ -400,11 +421,10 @@ namespace ZU_AuditIntel.Web.Data
         {
             var text = providedEvidence.Count == 0 ? null : string.Join('\n', providedEvidence);
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            await db.EvidenceSubmissions
-                .Where(s => s.AuditItemId == auditItemId)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(s => s.ProvidedEvidence, text), cancellationToken);
+            await UpdateAsync(
+                await DocumentsForItemAsync(auditItemId, cancellationToken),
+                new Dictionary<string, object?> { ["providedEvidence"] = text },
+                cancellationToken);
         }
 
         public async Task ApplyAgentOutcomeAsync(
@@ -416,21 +436,22 @@ namespace ZU_AuditIntel.Web.Data
             var outcome = AgentGate.IsApproved(score) ? AgentOutcome.Approved : AgentOutcome.Rejected;
             var checkedAt = DateTime.Now;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            await db.EvidenceSubmissions
-                .Where(s => s.AuditItemId == auditItemId)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(s => s.AgentScore, score)
-                    .SetProperty(s => s.AgentDefectRate, 100 - score)
-                    .SetProperty(s => s.AgentOutcome, outcome)
-                    .SetProperty(s => s.AgentFindings, findings)
-                    .SetProperty(s => s.AgentCheckedAt, checkedAt), cancellationToken);
+            await UpdateAsync(
+                await DocumentsForItemAsync(auditItemId, cancellationToken),
+                new Dictionary<string, object?>
+                {
+                    ["agentScore"] = score,
+                    ["agentDefectRate"] = 100 - score,
+                    ["agentOutcome"] = outcome.ToString(),
+                    ["agentFindings"] = findings,
+                    ["agentCheckedAt"] = Moment(checkedAt)
+                },
+                cancellationToken);
 
-            await NotifyItemAsync(
-                db, auditItemId,
+            await NotifyAsync(
+                auditItemId,
                 outcome == AgentOutcome.Approved ? NotificationKind.AgentPassed : NotificationKind.AgentFailed,
                 null, score, null, null, checkedAt, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
         }
 
         public async Task<string> SkipAgentAuditAsync(
@@ -444,62 +465,55 @@ namespace ZU_AuditIntel.Web.Data
                        $"أجاز البند بلا فحص آلي بتاريخ {DateTime.Now:yyyy/MM/dd HH:mm}.";
             var checkedAt = DateTime.Now;
 
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            await db.EvidenceSubmissions
-                .Where(s => s.AuditItemId == auditItemId)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(s => s.AgentScore, (int?)null)
-                    .SetProperty(s => s.AgentDefectRate, (int?)null)
-                    .SetProperty(s => s.AgentOutcome, AgentOutcome.Approved)
-                    .SetProperty(s => s.AgentFindings, note)
-                    .SetProperty(s => s.AgentCheckedAt, checkedAt), cancellationToken);
+            await UpdateAsync(
+                await DocumentsForItemAsync(auditItemId, cancellationToken),
+                new Dictionary<string, object?>
+                {
+                    ["agentScore"] = null,
+                    ["agentDefectRate"] = null,
+                    ["agentOutcome"] = AgentOutcome.Approved.ToString(),
+                    ["agentFindings"] = note,
+                    ["agentCheckedAt"] = Moment(checkedAt)
+                },
+                cancellationToken);
 
-            await NotifyItemAsync(
-                db, auditItemId, NotificationKind.Overridden, null, null,
-                actorName, note, checkedAt, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
+            await NotifyAsync(
+                auditItemId, NotificationKind.Overridden, null, null, actorName, note, checkedAt, cancellationToken);
 
             return note;
         }
 
-        public async Task<byte[]?> ReadBytesAsync(int submissionId, CancellationToken cancellationToken = default)
+        public async Task<byte[]?> ReadBytesAsync(string submissionId, CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var path = await db.EvidenceSubmissions.AsNoTracking()
-                .Where(s => s.Id == submissionId)
-                .Select(s => s.StoredPath)
-                .FirstOrDefaultAsync(cancellationToken);
+            var snapshot = await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken);
 
-            return path is null ? null : storage.Read(path);
+            // الوثيقة إن لم تكن فهي محذوفة: تقرأ null لا تستثني، فنقطة الملفات تردّ بأربعٍ لا وجدت.
+            return snapshot.Exists ? storage.Read(snapshot.GetValue<string>("storedPath")) : null;
         }
 
         public Task<EvidenceFileRef?> GetFileRefAsync(
-            int submissionId,
+            string submissionId,
             CancellationToken cancellationToken = default) => LoadFileRefAsync(submissionId, false, cancellationToken);
 
         public Task<EvidenceFileRef?> GetApprovedFileRefAsync(
-            int submissionId,
+            string submissionId,
             CancellationToken cancellationToken = default) => LoadFileRefAsync(submissionId, true, cancellationToken);
 
         private async Task<EvidenceFileRef?> LoadFileRefAsync(
-            int submissionId,
+            string submissionId,
             bool approvedOnly,
             CancellationToken cancellationToken)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-            var query = db.EvidenceSubmissions.AsNoTracking().Where(s => s.Id == submissionId);
-            if (approvedOnly)
-                query = query.Where(s => s.FinalOutcome == FinalOutcome.Approved);
+            var submission = (await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken))
+                .ConvertTo<EvidenceSubmission>();
 
-            var row = await query
-                .Select(s => new { s.StoredPath, s.FileName, s.Extension, s.DepartmentId })
-                .FirstOrDefaultAsync(cancellationToken);
-            if (row is null)
+            // ملف لم يُعتمد بعد لا يُفتح لصاحب النتيجة، وغير الموجود لا حدث له: فلا رقم ملف يكشف بنداً ناقصاً.
+            if (submission is null || (approvedOnly && submission.FinalOutcome != FinalOutcome.Approved))
                 return null;
 
-            var full = storage.FullPath(row.StoredPath);
+            var full = storage.FullPath(submission.StoredPath);
             return full.Length > 0 && File.Exists(full)
-                ? new EvidenceFileRef(full, row.FileName, row.Extension, row.DepartmentId)
+                ? new EvidenceFileRef(full, submission.FileName, submission.Extension, submission.DepartmentId)
                 : null;
         }
 
@@ -507,78 +521,49 @@ namespace ZU_AuditIntel.Web.Data
             string departmentId,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
             // الكتالوج أولاً ثم الملفات: البند الذي لم يجُز الوكيل ملفاته لا يصل إلى هذه الشاشة أصلاً.
-            var catalog = await db.AuditItems.AsNoTracking()
-                .Where(i => i.DepartmentId == departmentId)
-                .OrderBy(i => i.SortOrder)
-                .Select(i => new { i.Id, i.Title, i.IsoReference })
-                .ToListAsync(cancellationToken);
+            var catalog = await ItemsOfAsync(departmentId, cancellationToken);
+            var rows = await FilesForDepartmentAsync(departmentId, cancellationToken);
 
-            var rows = await db.EvidenceSubmissions.AsNoTracking()
-                .Where(s => s.DepartmentId == departmentId)
-                .OrderBy(s => s.AuditItemId).ThenBy(s => s.UploadedAt)
-                .Select(s => new ReviewFileRow(
-                    s.Id,
-                    s.AuditItemId,
-                    s.FileName,
-                    s.Extension,
-                    s.FileSize,
-                    s.AgentScore,
-                    s.AgentOutcome,
-                    s.AgentFindings,
-                    s.ProvidedEvidence,
-                    s.UploaderName,
-                    s.UploaderEmployeeId,
-                    s.UploadedAt,
-                    s.FinalOutcome,
-                    s.FinalNote,
-                    s.ReviewerName,
-                    s.ReviewerEmployeeId,
-                    s.ReviewedAt))
-                .ToListAsync(cancellationToken);
-
-            var byItem = rows.GroupBy(f => f.AuditItemId).ToDictionary(g => g.Key, g => g.ToList());
+            var byItem = rows
+                .GroupBy(s => s.AuditItemId)
+                .ToDictionary(g => g.Key, g => g.Select(ToReviewRow).ToList());
 
             // الرمز هو ترتيب البند داخل جهته كما تعرضه لوحة الجهة، لا مترقيم الزرع العام.
-            return catalog.Select((i, index) =>
-            {
-                var allFiles = byItem.TryGetValue(i.Id, out var found) ? found : [];
-                var passed = allFiles.Where(f => f.AgentOutcome == AgentOutcome.Approved).ToList();
+            return catalog
+                .Select((item, index) =>
+                {
+                    var allFiles = byItem.TryGetValue(item.Id, out var found) ? found : [];
+                    var passed = allFiles.Where(f => f.AgentOutcome == AgentOutcome.Approved).ToList();
 
-                return new ReviewItemRow(
-                    i.Id,
-                    index + 1,
-                    i.Title,
-                    i.IsoReference,
-                    ClassifyForReview(passed.Select(f => f.FinalOutcome).ToList()),
-                    passed,
-                    allFiles.Count - passed.Count);
-            }).ToList();
+                    return new ReviewItemRow(
+                        item.Id,
+                        index + 1,
+                        item.Title,
+                        item.IsoReference,
+                        ClassifyForReview(passed.Select(f => f.FinalOutcome).ToList()),
+                        passed,
+                        allFiles.Count - passed.Count);
+                })
+                .ToList();
         }
 
         public async Task<IReadOnlyDictionary<int, ItemBoardFacts>> GetItemBoardFactsAsync(
             string departmentId,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-            var files = await db.EvidenceSubmissions.AsNoTracking()
-                .Where(s => s.DepartmentId == departmentId)
-                .Select(s => new FileState(s.AuditItemId, s.AgentOutcome, s.FinalOutcome, s.ProvidedEvidence))
-                .ToListAsync(cancellationToken);
-
-            var required = await RequiredEvidenceByItemAsync(db, departmentId, cancellationToken);
+            var files = await FilesForDepartmentAsync(departmentId, cancellationToken);
+            var required = (await ItemsOfAsync(departmentId, cancellationToken))
+                .ToDictionary(item => item.Id, item => item.RequiredEvidence);
 
             return files
-                .GroupBy(f => f.AuditItemId)
+                .GroupBy(s => s.AuditItemId)
                 .ToDictionary(
                     g => g.Key,
                     g =>
                     {
                         var item = new ItemFacts(
-                            g.Select(f => (f.Agent, f.Final, f.Provided)).ToList(),
+                            g.Select(f => (f.AgentOutcome, f.FinalOutcome, f.ProvidedEvidence)).ToList(),
                             required.TryGetValue(g.Key, out var need) ? need : []);
 
                         return new ItemBoardFacts(
@@ -588,150 +573,103 @@ namespace ZU_AuditIntel.Web.Data
                     });
         }
 
-        private static async Task<IReadOnlyDictionary<int, IReadOnlyList<string>>> RequiredEvidenceByItemAsync(
-            AppDbContext db,
-            string departmentId,
-            CancellationToken cancellationToken)
-        {
-            return (await db.EvidenceRequirements.AsNoTracking()
-                    .Where(r => r.AuditItem.DepartmentId == departmentId)
-                    .OrderBy(r => r.AuditItemId).ThenBy(r => r.SortOrder)
-                    .Select(r => new { r.AuditItemId, r.Text })
-                    .ToListAsync(cancellationToken))
-                .GroupBy(r => r.AuditItemId)
-                .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(r => r.Text).ToList());
-        }
-
         public async Task ApplyFinalOutcomeAsync(
-            int submissionId,
+            string submissionId,
             FinalOutcome outcome,
             string? note,
             string reviewerEmployeeId,
             string reviewerName,
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+            var reference = Submissions.Document(submissionId);
 
             // ملف لا يقبله الوكيل لا يُوقَّع، وملف غير موجود لا حدث له: فلا سطر إشعار بلا تغيير.
-            var file = await db.EvidenceSubmissions.AsNoTracking()
-                .Where(s => s.Id == submissionId && s.AgentOutcome == AgentOutcome.Approved)
-                .Select(s => new { s.FileName, s.AuditItemId })
-                .FirstOrDefaultAsync(cancellationToken);
-            if (file is null)
+            var file = (await reference.GetSnapshotAsync(cancellationToken)).ConvertTo<EvidenceSubmission>();
+            if (file is null || file.AgentOutcome != AgentOutcome.Approved)
                 return;
 
             var reviewedAt = DateTime.Now;
-            await db.EvidenceSubmissions
-                .Where(s => s.Id == submissionId && s.AgentOutcome == AgentOutcome.Approved)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(s => s.FinalOutcome, outcome)
-                    .SetProperty(s => s.FinalNote, note)
-                    .SetProperty(s => s.ReviewerEmployeeId, reviewerEmployeeId)
-                    .SetProperty(s => s.ReviewerName, reviewerName)
-                    .SetProperty(s => s.ReviewedAt, reviewedAt), cancellationToken);
 
-            await NotifyItemAsync(
-                db, file.AuditItemId,
+            await reference.UpdateAsync(ToFields(new Dictionary<string, object?>
+            {
+                ["finalOutcome"] = outcome.ToString(),
+                ["finalNote"] = note,
+                ["reviewerEmployeeId"] = reviewerEmployeeId,
+                ["reviewerName"] = reviewerName,
+                ["reviewedAt"] = Moment(reviewedAt)
+            }), cancellationToken: cancellationToken);
+
+            await NotifyAsync(
+                file.AuditItemId,
                 outcome == FinalOutcome.Approved ? NotificationKind.Approved : NotificationKind.Rejected,
                 file.FileName, null, reviewerName, note, reviewedAt, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
         }
 
         public async Task<IReadOnlyList<DepartmentAuditStat>> GetDepartmentStatsAsync(
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
-            var departments = await db.Departments.AsNoTracking()
-                .OrderBy(d => d.DepartmentName)
-                .Select(d => new { d.DepartmentId, d.DepartmentName, TotalItems = d.AuditItems.Count })
-                .ToListAsync(cancellationToken);
+            var departments = await DepartmentsOrderedAsync(cancellationToken);
 
             // التجميع في الذاكرة: عدد الملفات في نموذج أولي صغير، وحالة البند تُشتق من قرارات كل ملفاته
-            // فلو تُرجمت إلى SQL لأصبحت قراءة الجدول أوضح منها.
-            var rows = await db.EvidenceSubmissions.AsNoTracking()
-                .Select(s => new { s.DepartmentId, s.AuditItemId, s.AgentOutcome, s.FinalOutcome })
-                .ToListAsync(cancellationToken);
+            // فلو فُصّلت في الاستعلام لأصبحت قراءة الوثائق أوضح منها.
+            var files = (await Submissions.GetSnapshotAsync(cancellationToken)).Documents
+                .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!);
 
-            var itemStates = rows
-                .GroupBy(r => r.DepartmentId)
+            var itemStates = files
+                .GroupBy(s => s.DepartmentId)
                 .ToDictionary(
                     byDepartment => byDepartment.Key,
                     byDepartment => byDepartment
-                        .GroupBy(r => r.AuditItemId)
+                        .GroupBy(s => s.AuditItemId)
                         .Select(item => ClassifyForReview(item
                             .Where(f => f.AgentOutcome == AgentOutcome.Approved)
                             .Select(f => f.FinalOutcome)
                             .ToList()))
                         .ToList());
 
-            return departments.Select(d =>
+            var stats = new List<DepartmentAuditStat>(departments.Count);
+            foreach (var department in departments)
             {
                 // البنود المجرّبة كلها بقرار الوكيل: فما لم يُجز شيئاً من ملفاته لا يدخل العدّ في أي خانة.
-                var items = itemStates.TryGetValue(d.DepartmentId, out var found) ? found : [];
-                return new DepartmentAuditStat(
-                    d.DepartmentId,
-                    d.DepartmentName,
-                    d.TotalItems,
+                var items = itemStates.TryGetValue(department.DepartmentId, out var found) ? found : [];
+                stats.Add(new DepartmentAuditStat(
+                    department.DepartmentId,
+                    department.DepartmentName,
+                    (await ItemsOfAsync(department.DepartmentId, cancellationToken)).Count,
                     items.Count(i => i != ReviewState.NotUploaded),
                     items.Count(i => i == ReviewState.AwaitingReview),
                     items.Count(i => i == ReviewState.Rejected),
-                    items.Count(i => i == ReviewState.Approved));
-            }).ToList();
+                    items.Count(i => i == ReviewState.Approved)));
+            }
+
+            return stats;
         }
 
         public async Task<IReadOnlyList<ApprovedItemRow>> GetFinallyApprovedAsync(
             CancellationToken cancellationToken = default)
         {
-            await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
-
             // الجهات فالبنود بترتيبها داخل كل جهة: الرمز المعروض مترقيمُ الجهة لا مترقيمُ الزرع العام.
-            var departments = await db.Departments.AsNoTracking()
-                .OrderBy(d => d.DepartmentName)
-                .Select(d => new { d.DepartmentId, d.DepartmentName })
-                .ToListAsync(cancellationToken);
-
-            var itemsByDepartment = (await db.AuditItems.AsNoTracking()
-                .OrderBy(i => i.DepartmentId).ThenBy(i => i.SortOrder)
-                .Select(i => new { i.Id, i.DepartmentId, i.Title, i.IsoReference })
-                .ToListAsync(cancellationToken))
-                .GroupBy(i => i.DepartmentId)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var departments = await DepartmentsOrderedAsync(cancellationToken);
 
             // ما أجازَه الوكيل وحده يدخل العدّ: فالبند المعتمد هو ما وقّعَ المدقّق كل ملفٍ وصلَه منه.
-            var filesByItem = (await db.EvidenceSubmissions.AsNoTracking()
-                .Where(s => s.AgentOutcome == AgentOutcome.Approved)
-                .OrderBy(s => s.AuditItemId).ThenBy(s => s.UploadedAt)
-                .Select(s => new ReviewFileRow(
-                    s.Id,
-                    s.AuditItemId,
-                    s.FileName,
-                    s.Extension,
-                    s.FileSize,
-                    s.AgentScore,
-                    s.AgentOutcome,
-                    s.AgentFindings,
-                    s.ProvidedEvidence,
-                    s.UploaderName,
-                    s.UploaderEmployeeId,
-                    s.UploadedAt,
-                    s.FinalOutcome,
-                    s.FinalNote,
-                    s.ReviewerName,
-                    s.ReviewerEmployeeId,
-                    s.ReviewedAt))
-                .ToListAsync(cancellationToken))
-                .GroupBy(f => f.AuditItemId)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            var filesByItem = (await Submissions
+                    .WhereEqualTo("agentOutcome", AgentOutcome.Approved.ToString())
+                    .GetSnapshotAsync(cancellationToken)).Documents
+                .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
+                .GroupBy(s => s.AuditItemId)
+                .ToDictionary(g => g.Key, g => g
+                    .OrderBy(s => s.UploadedAt).ThenBy(s => s.Id, StringComparer.Ordinal)
+                    .Select(ToReviewRow).ToList());
 
             var approved = new List<ApprovedItemRow>();
             foreach (var department in departments)
             {
-                if (!itemsByDepartment.TryGetValue(department.DepartmentId, out var items))
-                    continue;
+                var items = await ItemsOfAsync(department.DepartmentId, cancellationToken);
 
-                foreach (var (item, index) in items.Select((definition, position) => (definition, position)))
+                for (var index = 0; index < items.Count; index++)
                 {
+                    var item = items[index];
+
                     // لا بند بلا ملف مجاز، ولا بند بقيت منه ملفاً تنتظر توقيعا أو رُفضت: الإغلاق يعني «مقبول» كلها.
                     if (!filesByItem.TryGetValue(item.Id, out var files)
                         || !files.All(f => f.FinalOutcome == FinalOutcome.Approved))
@@ -752,12 +690,10 @@ namespace ZU_AuditIntel.Web.Data
         }
 
         /// <summary>
-        /// يضيف سطر إشعار عن بند، بعد أن يقرأ عنوانه واسم جهته من الكتالوج: العنوان والجهة يُحفظان
-        /// في السطر كما هما، فلا يتبع سطرُ السجل تغييراً لاحقاً في الكتالوج. والسطر يُحفظ مع التغيير
-        /// نفسه في نداء واحد، فلا يبقى حدث بلا أثر أو أثر بلا حدث.
+        /// سطر إشعار عن بند، بعد أن يُقرأ عنوانه واسم جهته من وثيقتيهما: العنوان والجهة يُحفظان في
+        /// السطر كما هما لحظة الحدث، فلا يتبع سطرُ السجل تغييراً لاحقاً في الكتالوج.
         /// </summary>
-        private static async Task NotifyItemAsync(
-            AppDbContext db,
+        private async Task NotifyAsync(
             int auditItemId,
             NotificationKind kind,
             string? fileName,
@@ -767,32 +703,142 @@ namespace ZU_AuditIntel.Web.Data
             DateTime createdAt,
             CancellationToken cancellationToken)
         {
-            var facts = await db.AuditItems.AsNoTracking()
-                .Where(i => i.Id == auditItemId)
-                .Select(i => new { i.Title, i.DepartmentId, DepartmentName = i.Department.DepartmentName })
-                .FirstOrDefaultAsync(cancellationToken);
-            if (facts is null)
+            var item = (await Items
+                .Document(auditItemId.ToString(CultureInfo.InvariantCulture))
+                .GetSnapshotAsync(cancellationToken)).ConvertTo<AuditItem>();
+            if (item is null)
                 return;
 
-            db.Notifications.Add(new Notification
+            var departmentName = (await Departments.Document(item.DepartmentId)
+                .GetSnapshotAsync(cancellationToken)).GetValue<string>("departmentName");
+
+            await notifications.RecordAsync(new Notification
             {
                 Kind = kind,
-                DepartmentId = facts.DepartmentId,
-                DepartmentName = facts.DepartmentName,
-                ItemTitle = facts.Title,
+                DepartmentId = item.DepartmentId,
+                DepartmentName = departmentName,
+                ItemTitle = item.Title,
                 FileName = fileName,
                 ActorName = actorName,
                 AgentScore = score,
                 Note = note,
                 CreatedAt = createdAt
-            });
+            }, cancellationToken);
         }
 
-        private sealed record FileState(
-            int AuditItemId,
-            AgentOutcome Agent,
-            FinalOutcome Final,
-            string? Provided);
+        private sealed record CatalogItem(int Id, string Title, string IsoReference, IReadOnlyList<string> RequiredEvidence);
+
+        /// <summary>بنود جهة واحدة بترتيب اللوحة نفسه الذي تُعرض به الأرقام.</summary>
+        private async Task<IReadOnlyList<CatalogItem>> ItemsOfAsync(
+            string departmentId, CancellationToken cancellationToken)
+        {
+            var documents = await Items
+                .WhereEqualTo("departmentId", departmentId)
+                .GetSnapshotAsync(cancellationToken);
+
+            return documents.Documents
+                .Select(snapshot => snapshot.ConvertTo<AuditItem>()!)
+                .OrderBy(item => item.SortOrder)
+                .ThenBy(item => item.Id)
+                .Select(item => new CatalogItem(item.Id, item.Title, item.IsoReference, item.RequiredEvidence))
+                .ToList();
+        }
+
+        /// <summary>ملفات جهة: شرطٌ واحد على الجهة، فالترتيب شأن محلي.</summary>
+        private async Task<IReadOnlyList<EvidenceSubmission>> FilesForDepartmentAsync(
+            string departmentId, CancellationToken cancellationToken)
+        {
+            var documents = await Submissions
+                .WhereEqualTo("departmentId", departmentId)
+                .GetSnapshotAsync(cancellationToken);
+
+            return documents.Documents
+                .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
+                .ToList();
+        }
+
+        private async Task<IReadOnlyList<DocumentSnapshot>> DocumentsForItemAsync(
+            int auditItemId, CancellationToken cancellationToken)
+        {
+            var documents = await Submissions
+                .WhereEqualTo("auditItemId", (long)auditItemId)
+                .GetSnapshotAsync(cancellationToken);
+
+            return documents.Documents;
+        }
+
+        private async Task<IReadOnlyList<AuditDepartment>> DepartmentsOrderedAsync(
+            CancellationToken cancellationToken)
+        {
+            var documents = await Departments.GetSnapshotAsync(cancellationToken);
+
+            return documents.Documents
+                .Select(snapshot => new AuditDepartment(
+                    snapshot.Id,
+                    snapshot.GetValue<string>("departmentName")))
+                .OrderBy(department => department.DepartmentName, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        private static ReviewFileRow ToReviewRow(EvidenceSubmission s) => new(
+            s.Id,
+            s.AuditItemId,
+            s.FileName,
+            s.Extension,
+            s.FileSize,
+            s.AgentScore,
+            s.AgentOutcome,
+            s.AgentFindings,
+            s.ProvidedEvidence,
+            s.UploaderName,
+            s.UploaderEmployeeId,
+            s.UploadedAt,
+            s.FinalOutcome,
+            s.FinalNote,
+            s.ReviewerName,
+            s.ReviewerEmployeeId,
+            s.ReviewedAt);
+
+        /// <summary>
+        /// حقول مشتركة تُكتب على كل وثائق قائمة واحدة: لا «تحديث بشرط» في Firestore، فتُقرأ الوثائق
+        /// أولاً ثم تُكتب في دفعات. أكثر ما هنا بضع عشرات من وثائق بند واحد، لا آلاف.
+        /// </summary>
+        private async Task UpdateAsync(
+            IReadOnlyList<DocumentSnapshot> documents,
+            IDictionary<string, object?> fields,
+            CancellationToken cancellationToken)
+        {
+            var updates = ToFields(fields);
+            var batch = firestore.StartBatch();
+            var pending = 0;
+
+            foreach (var snapshot in documents)
+            {
+                batch.Update(snapshot.Reference, updates);
+                if (++pending == BatchLimit)
+                {
+                    await batch.CommitAsync(cancellationToken);
+                    batch = firestore.StartBatch();
+                    pending = 0;
+                }
+            }
+
+            if (pending > 0)
+                await batch.CommitAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// الحقول التي تُكتب بقاموس مباشرة لا تمرّ بمحوّل النموذج، فتحتاج التوقيت لحظةً UTC كما
+        /// يحوّلها هو: وإلا رفضتها الحزمة لأن وقت الجهاز محلي لا موحّد.
+        /// </summary>
+        private static Timestamp Moment(DateTime local) => Timestamp.FromDateTime(local.ToUniversalTime());
+
+        /// <summary>
+        /// الحقل الخالي يُكتب صراحةً null ولا يُحذف: كما كان العمود في القاعدة القديمة يساوي NULL،
+        /// يقرأ منه النموذج لاحقاً «لا نتيجة بعد» لا «وثيقة ناقصة».
+        /// </summary>
+        private static IDictionary<string, object> ToFields(IDictionary<string, object?> fields) =>
+            fields.ToDictionary(pair => pair.Key, pair => pair.Value!);
 
         /// <summary>
         /// حالة البند على شاشة رئيس الوحدة من قراراتها هي لا من قرار الوكيل: فالملف لم يصل إليها
