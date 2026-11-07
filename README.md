@@ -77,17 +77,23 @@ dotnet run --project ZU_AuditIntel.Web        # http://localhost:5124
 ```bash
 powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"   # تنصيب flyctl مرة واحدة
 fly auth login                                                   # أو fly auth signup لحساب جديد
-powershell -ExecutionPolicy Bypass -File "C:/Users/NTC/Documents/Qoder/2026-10-25/892de0ae/scratch/fly_deploy.ps1"
+powershell -ExecutionPolicy Bypass -File deploy/fly.ps1           # من جذر المستودع
 ```
 
 ولمن ينشئ التطبيق أول مرة من مستودعٍ نظيف: `fly launch --copy-config --no-deploy --ha=false`
 قبل السكريبت، ثم يعدّل `fly.toml` على ما أنشأه Launch إن خالف المنطقة أو المنفذ.
 
-السكريبت يقرأ المفتاحين من `C:/Users/NTC/.config/zu-auditintel/` ولا يطبعهما، ويضغط مفتاح
-Firestore في سطر واحد، ثم يضبط أربعة سرود مرحّلةً (`--stage`) فلا إعادة تشغيل مرتين:
-`Firestore__CredentialsJson` و`B2_ACCESS_KEY_ID` و`B2_SECRET_ACCESS_KEY` و`Audit__LoginAllowlist=9999999`.
-والشرطتان السفليتان في الأخير هما ما يترجمه ASP.NET إلى `Audit:LoginAllowlist`، فبوابة الدخول
-تقبل رقم المدير وحده ولا تفتح الحسابات المزروعة على كلماتها المنشورة.
+والسكريبت `deploy/fly.ps1` داخل المستودع لا في مجلدٍ مؤقت على جهازٍ واحد: جذر المستودع يُستنتج
+من موضعه (`deploy/..`)، والمفتاحان يُقرآن افتراضياً من `%USERPROFILE%\.config\zu-auditintel\`.
+وكلٌّ من ذلك وسيطٌ يُمرَّر على جهازٍ آخر أو حسابٍ آخر: `-App` و`-RepoRoot` و`-FirestoreKeyFile`
+و`-B2KeyFile`، ومعها `-SecretsOnly` يضبط السرود مرحّلةً بلا بناءٍ ولا نشر. وهو يرفض الجذر إن لم
+يحوي `fly.toml` و`Dockerfile` قبل أن يرسل سياق بناءٍ ناقص.
+
+يقرأ المفتاحين ولا يطبعهما، ويضغط مفتاح Firestore في سطر واحد، ثم يضبط أربعة سرود مرحّلةً
+(`--stage`) فلا إعادة تشغيل مرتين: `Firestore__CredentialsJson` و`B2_ACCESS_KEY_ID` و
+`B2_SECRET_ACCESS_KEY` و`Audit__LoginAllowlist=9999999`. والشرطتان السفليتان في الأخير هما ما
+يترجمه ASP.NET إلى `Audit:LoginAllowlist`، فبوابة الدخول تقبل رقم المدير وحده ولا تفتح الحسابات
+المزروعة على كلماتها المنشورة.
 
 والسرود تُصبّ في `fly secrets import` عبر stdin من ملف مؤقت يُحذف بعد الإرسال، لا عبر
 `fly secrets set` بوسيطٍ نصّي: PowerShell 5.1 يجرد علامات الاقتباس من الوسيط حين يمرّره إلى
