@@ -69,16 +69,19 @@ dotnet run --project ZU_AuditIntel.Web        # http://localhost:5124
 
 ### Fly.io — المسار المختار
 
-`fly.toml` في الجذر يضبط البناء من `Dockerfile` والمنفذ ٨٠٨٠ والإيقاف عند الخمول، والبناء يجري
-على باني Fly البعيد فلا Docker على الجهاز ولا صورة تُرفع يدوياً. التسلسل:
+التطبيق قائم على Fly باسم `zu-auditintel` ورابطه `https://zu-auditintel.fly.dev`، وماكينته في
+`iad` بذاكرة gigabyte ومنفذٍ داخلي `10000`. و`fly.toml` في الجذر يحاذي تلك القيم الثلاث فلا
+يكون النشر ترحيلاً إلى منطقة أخرى ولا تصغيراً لذاكرةٍ تخنق العميل، ويضبط البناء من `Dockerfile`
+على باني Fly البعيد فلا Docker على الجهاز ولا صورة تُرفع يدوياً. والتحديث لا يحتاج `fly launch`:
 
 ```bash
-powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"   # تنصيب flyctl
-fly auth signup                                                  # أو fly auth login
-cd C:/Users/NTC/OneDrive/Desktop/ZU_AuditIntel.Web
-fly launch --copy-config --no-deploy --ha=false                  # ينشئ التطبيق من fly.toml
+powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"   # تنصيب flyctl مرة واحدة
+fly auth login                                                   # أو fly auth signup لحساب جديد
 powershell -ExecutionPolicy Bypass -File "C:/Users/NTC/Documents/Qoder/2026-10-25/892de0ae/scratch/fly_deploy.ps1"
 ```
+
+ولمن ينشئ التطبيق أول مرة من مستودعٍ نظيف: `fly launch --copy-config --no-deploy --ha=false`
+قبل السكريبت، ثم يعدّل `fly.toml` على ما أنشأه Launch إن خالف المنطقة أو المنفذ.
 
 السكريبت يقرأ المفتاحين من `C:/Users/NTC/.config/zu-auditintel/` ولا يطبعهما، ويضغط مفتاح
 Firestore في سطر واحد، ثم يضبط أربعة سرود مرحّلةً (`--stage`) فلا إعادة تشغيل مرتين:

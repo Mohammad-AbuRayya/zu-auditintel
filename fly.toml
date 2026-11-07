@@ -1,20 +1,21 @@
 # النشر على Fly.io: الصورة تُبنى من Dockerfile الجذر على باني Fly البعيد، فلا Docker على جهاز
-# المطوّر ولا صورة تُرفع يدوياً. والمنفذ 8080 ما يتوقّعه Fly، وCMD في الصورة يوسّع PORT وحده.
+# المطوّر ولا صورة تُرفع يدوياً. والقيم هنا تحاذي الماكينة القائمة (iad، منفذ 10000، gigabyte)
+# فيكون النشر تحديثاً لها لا ترحيلاً إلى منطقة أخرى ولا تصغيراً لذاكرةٍ قد تخنق العميل.
 
 app = "zu-auditintel"
-primary_region = "fra"
+primary_region = "iad"
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
   ASPNETCORE_ENVIRONMENT = "Production"
-  PORT = "8080"
+  PORT = "10000"
 
 # Blazor Server يعيش على WebSocket، وFly يعدّه نشاطاً فلا ينام الجهاز ما دامت لوحةٌ مفتوحة.
 # والإيقاف عند الخمول هو ما يُبقي الفاتورة على قدر الاستخدام لا على قدر الشهر.
 [http_service]
-  internal_port = 8080
+  internal_port = 10000
   force_https = true
   auto_stop_machines = "stop"
   auto_start_machines = true
@@ -23,4 +24,4 @@ primary_region = "fra"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "1gb"
