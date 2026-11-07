@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.RateLimiting;
@@ -21,6 +22,17 @@ builder.Services.AddRazorComponents()
 builder.Services.AddLocalization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
+
+// مفاتيح الحماية تفكّ كوكيز الدخول وتوكنات antiforgery. في الحاوية تُكتب افتراضياً في مسارٍ
+// يُمحى مع الماكينة، فيبطل عند كل إقلاعٍ بارد كل كوكيٍ صدر قبله. والمسار يأتي من الإعداد لا
+// ثابتاً في الكود: التشغيل المحلي يبقى على مفتاحه الافتراضي ولا يُجبر على قرصٍ لا يملكه.
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath))
+        .SetApplicationName("ZU_AuditIntel");
+}
 
 // المنصّات المستضيفة تنهي TLS عند وسيطها ثم تدفع إلى الحاوية طلباً مجرّد http على المنفذ الذي
 // يعطيها المتغيّر PORT. بلا قراءة ترويسات التحويل يظنّ التطبيق أنه لا https فيه إطلاقاً: فإما
