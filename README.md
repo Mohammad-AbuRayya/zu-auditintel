@@ -67,6 +67,32 @@ dotnet run --project ZU_AuditIntel.Web        # http://localhost:5124
 المجّان. فـ«خدمة ويب مجانية على Render بتطبيق Blazor» لا تُوفى كما طُلبت: فإمّا بديلٌ مجاني
 يحمل الحاويات، أو Render Starter المدفوع.
 
+### Fly.io — المسار المختار
+
+`fly.toml` في الجذر يضبط البناء من `Dockerfile` والمنفذ ٨٠٨٠ والإيقاف عند الخمول، والبناء يجري
+على باني Fly البعيد فلا Docker على الجهاز ولا صورة تُرفع يدوياً. التسلسل:
+
+```bash
+powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"   # تنصيب flyctl
+fly auth signup                                                  # أو fly auth login
+cd C:/Users/NTC/OneDrive/Desktop/ZU_AuditIntel.Web
+fly launch --copy-config --no-deploy --ha=false                  # ينشئ التطبيق من fly.toml
+powershell -ExecutionPolicy Bypass -File "C:/Users/NTC/Documents/Qoder/2026-10-25/892de0ae/scratch/fly_deploy.ps1"
+```
+
+السكريبت يقرأ المفتاحين من `C:/Users/NTC/.config/zu-auditintel/` ولا يطبعهما، ويضغط مفتاح
+Firestore في سطر واحد، ثم يضبط أربعة سرود مرحّلةً (`--stage`) فلا إعادة تشغيل مرتين:
+`Firestore__CredentialsJson` و`B2_ACCESS_KEY_ID` و`B2_SECRET_ACCESS_KEY` و`Audit__LoginAllowlist=9999999`.
+والشرطتان السفليتان في الأخير هما ما يترجمه ASP.NET إلى `Audit:LoginAllowlist`، فبوابة الدخول
+تقبل رقم المدير وحده ولا تفتح الحسابات المزروع على كلماتها المنشورة.
+
+وثمنه بصراحة: Fly ألغت الخطة المجانية للحسابات الجديدة، وتعطي دولاراً واحداً رصيداً تجريبياً
+بلا بطاقة، ثم الدفع بالاستخدام وبطاقة — فالرصيد يكفي تشغيلاً متقطعاً لا شهراً كاملاً. ومن أراد
+المجّان بلا بطاقة فـ Koyeb تحمل الحاويات على خطّتها المجانية والـ Dockerfile نفسه يعمل عليها.
+
+وأثرٌ جانبي للإيقاف عند الخمول: مفاتيح حماية الكوكيز في الحاوية مؤقتة، فكل إقلاعٍ بارد يُسقط
+جلسات الدخول ويطلب دخولاً جديداً. حسمه بقرصٍ ثابت لمفاتيح الحماية إن طال الاستعمال.
+
 ## خريطة الوثائق
 
 سبع مجموعات، وأسماؤها ثابتة في `Data/Firestore.cs` (`AuditCollections`) فلا يكرر مخزن حرفاً
