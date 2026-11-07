@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
@@ -17,6 +18,7 @@ namespace ZU_AuditIntel.Web.Endpoints
         {
             app.MapPost("/account/login", LoginAsync)
                 .AllowAnonymous()
+                .DisableAntiforgery()
                 .RequireRateLimiting("account-login");
 
             app.MapGet("/account/staff-kind", StaffKindAsync)
@@ -36,9 +38,16 @@ namespace ZU_AuditIntel.Web.Endpoints
             HttpContext http,
             IAccountDirectory directory,
             IConfiguration config,
+            IAntiforgery antiforgery,
             [FromForm] string? employeeId,
             [FromForm] string? password)
         {
+            // الفحص لم يُلغَ بل انتقل من الوسيط إلى هنا: الوسيط يردّ 400 فيعيد StatusCodePages تشغيل
+            // الخط على الطلب نفسه، فيقرأ النموذج وميزة التحقق فيه فاقدةٌ للصلاحية فيرمي 500. وأثرها
+            // أن كوكياً قديماً من قبل إقلاعٍ بارد يحرق صفحة الدخول بدل أن يعود إلى صفحةٍ بتوكنٍ جديد.
+            if (!await antiforgery.IsRequestValidAsync(http))
+                return Results.Redirect("/login?error=session");
+
             var user = await directory.AuthenticateAsync(employeeId ?? "", password ?? "", http.RequestAborted);
             if (user is null)
                 return Results.Redirect("/login?error=invalid");
