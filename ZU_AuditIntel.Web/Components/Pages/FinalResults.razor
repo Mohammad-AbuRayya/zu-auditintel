@@ -1,6 +1,7 @@
 @page "/results"
 @layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
-@rendermode InteractiveServer
+@* بلا تصيير مسبق: قراءة البيانات مرة واحدة على الدارة لا مرتين (SSR ثم دارة)، فالاستعلامات نصف ما كانت. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize(Policy = AuthorizationPolicies.CanReadResults)]
 @inject IEvidenceStore Store
 @inject NavigationManager Navigation
@@ -179,7 +180,7 @@
                         @if (Rows.Count == 0)
                         {
                             <div class="fw-bold">@T("لم يُغلق التوقيع البشري بنداً بعد")</div>
-                            <div class="small text-muted">@T("تظهر البنود هنا لحظة أن يوقّع مدقّق الجهة على كل ملف أجازَه الوكيل في بند «مقبولاً».")</div>
+                            <div class="small text-muted">@T("تظهر البنود هنا لحظة أن يوقّع رئيس الوحدة على كل ملف أجازَه الوكيل في بند «مقبولاً».")</div>
                         }
                         else
                         {

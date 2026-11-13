@@ -37,7 +37,6 @@ namespace ZU_AuditIntel.Web.Endpoints
         private static async Task<IResult> LoginAsync(
             HttpContext http,
             IAccountDirectory directory,
-            IConfiguration config,
             IAntiforgery antiforgery,
             [FromForm] string? employeeId,
             [FromForm] string? password)
@@ -50,15 +49,6 @@ namespace ZU_AuditIntel.Web.Endpoints
 
             var user = await directory.AuthenticateAsync(employeeId ?? "", password ?? "", http.RequestAborted);
             if (user is null)
-                return Results.Redirect("/login?error=invalid");
-
-            // الكلمة الأولية لكل حساب مزروع منشورة في README العام، فعلى خادمٍ إنترنت لا يُقبل
-            // صاحبُها حتى يستلمها هو. قائمةُ أرقام من البيئة تضبط من يُقبل، ومتى تُركت فارغة —
-            // وهي حالة الجهاز المطوّر — بقي المسار بلا قيد.
-            var allowlist = (config["Audit:LoginAllowlist"] ?? "")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-            if (allowlist.Length > 0 && !allowlist.Contains(user.EmployeeId))
                 return Results.Redirect("/login?error=invalid");
 
             var principal = AuditClaims.ToPrincipal(user);
@@ -84,7 +74,15 @@ namespace ZU_AuditIntel.Web.Endpoints
             if (user is null)
                 return Results.Redirect("/login?error=session");
 
-            await directory.ChangePasswordAsync(user, newPassword, http.RequestAborted);
+            try
+            {
+                await directory.ChangePasswordAsync(user, newPassword, http.RequestAborted);
+            }
+            catch (FirestoreUnavailableException)
+            {
+                // السحابة لا تجيب، والكلمة لا تُحفظ على القرص وحده: رسالة في الصفحة لا استثناء يقتل الطلب.
+                return Results.Redirect("/account/change-password?error=unavailable");
+            }
 
             // إعادة إصدار الكوكيز حتى يسقط ادعاء "تغيير كلمة المرور مطلوب" من الجلسة الحالية.
             await http.SignInAsync(
@@ -140,7 +138,7 @@ namespace ZU_AuditIntel.Web.Endpoints
         /// <summary>التدقيق النهائي على ملفات الجهات: لرئيس وحدة التطوير وضمان الجودة وللمدير.</summary>
         public const string CanReview = "CanReview";
 
-        /// <summary>شاشة تدقيق جهة: تضاف إليها حق مدقّق الجهة اليدوي في صفحته هو.</summary>
+        /// <summary>شاشة التدقيق النهائي ونقطة تنزيل ملفاتها: الحق نفسه لرئيس الوحدة والمدير.</summary>
         public const string CanReviewBoard = "CanReviewBoard";
 
         /// <summary>صفحة النتيجة النهائية: لقارئ النتيجة ولمدير النظام، ولا مدقّق فيها.</summary>

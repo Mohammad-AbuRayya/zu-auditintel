@@ -10,6 +10,11 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.104.10" />
     <PackageReference Include="Google.Cloud.Firestore" Version="4.6.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="11.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Data\Sqlite\schema.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

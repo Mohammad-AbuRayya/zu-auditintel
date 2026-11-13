@@ -1,6 +1,7 @@
 ﻿@page "/Audit/{DepartmentId}"
 @layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
-@rendermode InteractiveServer
+@* بلا تصيير مسبق: قراءة البيانات مرة واحدة على الدارة لا مرتين (SSR ثم دارة)، فالاستعلامات نصف ما كانت. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize(Policy = AuthorizationPolicies.CanAudit)]
 @inject IAuditCatalog Catalog
 @inject IEvidenceStore Evidence
@@ -1273,8 +1274,20 @@
         else
             item.CoveredEvidence.Remove(evidence);
 
-        await Evidence.SetItemEvidenceAsync(item.Id, item.CoveredEvidence);
-        await RefreshBoardStatesAsync();
+        try
+        {
+            await Evidence.SetItemEvidenceAsync(item.Id, item.CoveredEvidence);
+            await RefreshBoardStatesAsync();
+        }
+        catch (FirestoreUnavailableException)
+        {
+            // الإعلان لم يُكتب، فتعود العلامة إلى حالها قبل الضغطة: لا تُعرض الجهة علماً لم يُحفظ.
+            if (isChecked)
+                item.CoveredEvidence.Remove(evidence);
+            else
+                item.CoveredEvidence.Add(evidence);
+            ReportUnavailable();
+        }
     }
 
     /// <summary>رابط تنزيل الجهة ملفها من مخزن الأدلة، وهو حقٌّ لها على ملفاتها هي.</summary>
@@ -1375,6 +1388,10 @@
                         Inspection = inspection
                     });
                 }
+                catch (FirestoreUnavailableException)
+                {
+                    ReportUnavailable();
+                }
                 catch (Exception ex)
                 {
                     UploadErrors.Add(F("تعذر قراءة الملف \"{0}\": {1}", file.Name, ex.Message));
@@ -1391,18 +1408,33 @@
 
     private async Task RemoveFileAsync(AuditItem item, UploadedEvidenceFile file)
     {
-        item.Files.Remove(file);
-        if (file.SubmissionId.Length > 0)
-            await Evidence.DeleteAsync(file.SubmissionId);
-        await MarkItemAsChangedAsync(item);
+        try
+        {
+            // الحذف من المخزن أولاً ثم من الصف: لو رُدّ الحذف بقي الملف في اللوحة كما هو في السجل.
+            if (file.SubmissionId.Length > 0)
+                await Evidence.DeleteAsync(file.SubmissionId);
+            item.Files.Remove(file);
+            await MarkItemAsChangedAsync(item);
+        }
+        catch (FirestoreUnavailableException)
+        {
+            ReportUnavailable();
+        }
     }
 
     private async Task ResetItemAsync(AuditItem item)
     {
-        item.Files.Clear();
-        await Evidence.DeleteForItemAsync(item.Id);
-        await MarkItemAsChangedAsync(item);
-        UploadErrors.Clear();
+        try
+        {
+            await Evidence.DeleteForItemAsync(item.Id);
+            item.Files.Clear();
+            await MarkItemAsChangedAsync(item);
+            UploadErrors.Clear();
+        }
+        catch (FirestoreUnavailableException)
+        {
+            ReportUnavailable();
+        }
     }
 
     // أي تغيير على الملفات يُبطل نتيجة الفحص السابقة، في الصف وفي قاعدة البيانات معاً.
@@ -1423,8 +1455,24 @@
             file.FinalNote = null;
         }
 
-        await Evidence.InvalidateItemOutcomeAsync(item.Id);
+        try
+        {
+            await Evidence.InvalidateItemOutcomeAsync(item.Id);
+        }
+        catch (FirestoreUnavailableException)
+        {
+            ReportUnavailable();
+        }
+
         await RefreshBoardStatesAsync();
+    }
+
+    /// <summary>رسالة الرفض واحدة مهما تكرّر في ضغطةٍ واحدة: فلا تُعرض قائمةٌ من النص نفسه.</summary>
+    private void ReportUnavailable()
+    {
+        var text = T("الخدمة السحابية لا تجيب الآن، فلم يُحفظ التغيير. حاول مرة أخرى بعد عودة الخدمة.");
+        if (!UploadErrors.Contains(text))
+            UploadErrors.Add(text);
     }
 
     // ===================== الفحص الذكي (AI Audit) =====================
@@ -1577,7 +1625,16 @@
         if (!IsSystemAdmin || SelectedItem is null || SelectedItem.Files.Count == 0) return;
 
         var item = SelectedItem;
-        var note = await Evidence.SkipAgentAuditAsync(item.Id, UploaderName, UploaderEmployeeId);
+        string note;
+        try
+        {
+            note = await Evidence.SkipAgentAuditAsync(item.Id, UploaderName, UploaderEmployeeId);
+        }
+        catch (FirestoreUnavailableException)
+        {
+            ReportUnavailable();
+            return;
+        }
 
         foreach (var file in item.Files)
         {

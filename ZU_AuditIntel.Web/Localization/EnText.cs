@@ -62,9 +62,15 @@ internal static class EnText
         ["تغيير كلمة المرور - ZU-AuditIntel"] = "Change password - ZU-AuditIntel",
         ["هذا الحساب أُنشئ بكلمة مرور أولية. حدّد كلمة مرور خاصة بك قبل الدخول إلى لوحة التدقيق."] = "This account was created with an initial password. Set your own password before opening the audit board.",
         ["كلمة المرور يجب ألا تقل عن ٨ أحرف وأن تطابق حقل التأكيد."] = "The password must be at least 8 characters long and must match the confirmation field.",
+        ["خدمة البيانات السحابية لا تجيب الآن، فلم تُحفظ كلمة المرور. حاول مرة أخرى بعد قليل."] = "The cloud data service is not responding right now, so the password was not saved. Please try again shortly.",
         ["كلمة المرور الجديدة"] = "New password",
         ["تأكيد كلمة المرور"] = "Confirm password",
         ["حفظ كلمة المرور"] = "Save password",
+
+        // ---------- انقطاع الخدمة السحابية ----------
+        ["الخدمة السحابية لا تجيب الآن، فلم يُحفظ التغيير. حاول مرة أخرى بعد عودة الخدمة."] = "The cloud service is not responding right now, so the change was not saved. Please try again once the service is back.",
+        ["الخدمة السحابية لا تجيب الآن، فلم تُرسل الرسالة. حاول مرة أخرى بعد عودة الخدمة."] = "The cloud service is not responding right now, so the message was not sent. Please try again once the service is back.",
+        ["قاعدة البيانات السحابية لا تجيب الآن (نفاد الحصة اليومية). البنود والجهات تُقرأ من النسخة المحلية، والدخول يعمل بكلمة المرور المحفوظة. الرفع والتوقيع وتغيير الكلمة موقوفة، وتعود الخدمة تلقائياً متى عادت السحابة."] = "The cloud database is not responding right now (daily quota exhausted). Items and entities are read from the local copy, and sign-in works with the stored password. Uploading, signing and password changes are paused, and the service returns automatically once the cloud is back.",
 
         // ---------- لوحات التدقيق ----------
         ["لوحات التدقيق | ZU-AuditIntel"] = "Audit boards | ZU-AuditIntel",
@@ -73,8 +79,6 @@ internal static class EnText
         ["لوحات تدقيق الجهات"] = "Entity audit boards",
         ["كل لوحة تعرض بنود جهتها من قائمة الفحص المعتمدة ZU/QP02F003."] = "Each board shows its entity's items from the approved checklist ZU/QP02F003.",
         ["فتح لوحة التدقيق"] = "Open the audit board",
-        ["صفحات التدقيق النهائي على بنود الجهات"] = "Final review pages of the entities' items",
-        ["فتح صفحة التدقيق النهائي"] = "Open the final review page",
         ["لوحتك لم تُبنَ بعد"] = "Your board has not been built yet",
         ["كتالوج بنود الجهات مكتمل، ولوحاتها متاحة لممثليها، وشاشة التدقيق النهائي تعمل لرئيس وحدة الاعتماد. الباقي في الطبقة التالية: قائمة مراجعة ضابط الارتباط."] = "The entities' item catalogue is complete, their boards are available to their representatives, and the final audit screen works for the head of the Accreditation Unit. What is left belongs to the next layer: the liaison officer's checklist.",
 
@@ -304,7 +308,7 @@ internal static class EnText
         ["هذه شاشة قراءة لا تدقيق: لا تُوقَّع هنا بندٌ ولا يُلغى اعتماد، وما يظهر فيها هو ما أغلقه المدقّق البشري «مقبولاً» على كل ملف أجازَه الوكيل فيه."] = "This is a reading screen, not an audit: no item is signed here and no approval is undone; what shows is what the human auditor closed as accepted across every file the agent approved.",
         ["قرار المدقّق، لا قرار هذه الشاشة"] = "The auditor's decision, not this screen's",
         ["لم يُغلق التوقيع البشري بنداً بعد"] = "No item has been closed by a human signature yet",
-        ["تظهر البنود هنا لحظة أن يوقّع مدقّق الجهة على كل ملف أجازَه الوكيل في بند «مقبولاً»."] = "Items appear here the moment the entity's auditor accepts every agent-approved file of an item.",
+        ["تظهر البنود هنا لحظة أن يوقّع رئيس الوحدة على كل ملف أجازَه الوكيل في بند «مقبولاً»."] = "Items appear here the moment the unit head accepts every agent-approved file of an item.",
         ["ما أغلقه المدقّق البشري من بنود كل الجهات، قراءةً لا توقيعاً"] = "What the human auditor closed across all entities, to read rather than to sign",
         ["بند معتمد نهائياً"] = "Items approved finally",
         ["جهة لها بند معتمد"] = "Entities with an approved item",
@@ -365,7 +369,7 @@ internal static class EnText
         ["لا محادثات بعد — ابدأ واحدة بزر «محادثة جديدة»"] = "No conversations yet — start one with the \"New conversation\" button",
         ["أنت: "] = "You: ",
         ["اختر محادثة أو ابدأ واحدة جديدة"] = "Pick a conversation or start a new one",
-        ["كل جهة تراسل من لها به عمل: رئيس وحدة التطوير وضمان الجودة، وصاحب النتيجة النهائية، وزميلها في الجهة نفسها."] = "Everyone reaches the people they work with: the head of the Development & Quality Assurance Unit, the final result owner, and their counterpart in the same entity.",
+        ["كل جهة تراسل من لها به عمل: رئيس وحدة التطوير وضمان الجودة، وصاحب النتيجة النهائية."] = "Everyone reaches the people they work with: the head of the Development & Quality Assurance Unit, and the final result owner.",
         ["لا رسائل بينك وبين {0} بعد."] = "There are no messages between you and {0} yet.",
         ["اكتب رسالتك…"] = "Write your message…",
         ["إرسال"] = "Send",
@@ -398,7 +402,6 @@ internal static class EnText
         ["كل رفع أو فحص أو قرار يظهر في صفحة الإشعارات، ويظهر عدده بجانب زرها في الشريط."] = "Every upload, check or decision appears on the notifications page, and its count shows next to the button in the rail.",
         ["من يفعل ماذا؟"] = "Who does what?",
         ["ممثل الجهة: يرفع أدلة جهته ويرى لوحتها وحدها."] = "Entity representative: uploads the entity's evidence and sees only its board.",
-        ["مدقّق الجهة: شاشته على جهته، يعتمد أو يرفض ما أجازه الوكيل."] = "Entity auditor: has a screen for their entity, and accepts or rejects what the agent approved.",
         ["رئيس وحدة التطوير وضمان الجودة: يرى ملفات كل الجهات ويوقّع الاعتماد النهائي."] = "Head of the Development & Quality Assurance Unit: sees every entity's files and signs the final approval.",
         ["صاحب النتيجة النهائية: يقرأ ما أُغلق معتمداً، ولا يرفع دليلاً ولا يوقّع بنداً."] = "Final result owner: reads what has been closed as approved, and neither uploads evidence nor signs an item.",
         ["مدير النظام: يفتح كل الشاشات للمعاينة والدعم، ويوقّع باسمه لا باسم غيره."] = "System administrator: opens every screen for inspection and support, and signs in their own name, not anyone else's.",

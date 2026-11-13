@@ -26,10 +26,6 @@ namespace ZU_AuditIntel.Web.Data
         /// <summary>رئيس الوحدة وصاحب النتيجة والمدير: يراسلون الكل ويقبلون مراسلة الكل.</summary>
         public bool ReachesEveryone =>
             Role is AuditorRole.QualityHead or AuditorRole.FinalResultReader or AuditorRole.SystemAdministrator;
-
-        public bool IsRepresentative => Role == AuditorRole.EntityRepresentative;
-
-        public bool IsEntityAuditor => Role == AuditorRole.EntityAuditor;
     }
 
     /// <summary>جهة اتصال كما تُعرض في قائمة الاختيار: الاسم والمسمّى والجهة والدور.</summary>
@@ -91,7 +87,7 @@ namespace ZU_AuditIntel.Web.Data
     /// وعدّادي غير المقروء، وسطور الرسائل في مجموعة فرعية تحتها. قائمة المحادثات تقرأ وثائق الأزواج
     /// وحدها بـ array-contains على «participants»، فلا تنزل إلى الرسائل ولا تحتاج فهرساً مركّباً.
     /// </summary>
-    public sealed class FirestoreMessageStore(FirestoreDb firestore) : IMessageStore
+    public sealed class FirestoreMessageStore(FirestoreDb firestore, FirestoreResilience resilience) : IMessageStore
     {
         /// <summary>سقف نص الرسالة، وهو نفسه سقف الحقل في الوثيقة.</summary>
         public const int MaxBodyLength = 2000;
@@ -103,9 +99,20 @@ namespace ZU_AuditIntel.Web.Data
         private CollectionReference Users { get; } = firestore.Collection(AuditCollections.Users);
         private CollectionReference Departments { get; } = firestore.Collection(AuditCollections.Departments);
 
-        public async Task<IReadOnlyList<MessageThreadRow>> ListThreadsAsync(
+        // القراءات محروسة عند بابها لا عند كل استعلام داخلها: المحادثة تقرأ الأزواج ثم الحسابات ثم
+        // الجهات ثم الرسائل، فأيُّها رُدّ تُقدَّم خالية بدل أن تموت الدائرة وتتجمّد أزرار الصفحة.
+        // ولا نسخة محلية للرسائل: جدولها في قاعدة SQLite فارغ، فالخلاء أثناء الانقطاع هو الحقيقة.
+        public Task<IReadOnlyList<MessageThreadRow>> ListThreadsAsync(
             MessageViewer viewer,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.ReadAsync<IReadOnlyList<MessageThreadRow>>(
+                "قائمة المحادثات",
+                () => ListThreadsCoreAsync(viewer, cancellationToken),
+                () => Task.FromResult<IReadOnlyList<MessageThreadRow>>([]));
+
+        private async Task<IReadOnlyList<MessageThreadRow>> ListThreadsCoreAsync(
+            MessageViewer viewer,
+            CancellationToken cancellationToken)
         {
             var me = viewer.EmployeeId;
             if (me.Length == 0)
@@ -146,7 +153,13 @@ namespace ZU_AuditIntel.Web.Data
                 .ToList();
         }
 
-        public async Task<int> CountUnreadAsync(string employeeId, CancellationToken cancellationToken = default)
+        public Task<int> CountUnreadAsync(string employeeId, CancellationToken cancellationToken = default) =>
+            resilience.ReadAsync(
+                "عدّاد الرسائل غير المقروءة",
+                () => CountUnreadCoreAsync(employeeId, cancellationToken),
+                () => Task.FromResult(0));
+
+        private async Task<int> CountUnreadCoreAsync(string employeeId, CancellationToken cancellationToken)
         {
             if (employeeId.Length == 0)
                 return 0;
@@ -160,9 +173,17 @@ namespace ZU_AuditIntel.Web.Data
                 .Sum(thread => thread.UnreadFor(employeeId));
         }
 
-        public async Task<IReadOnlyList<MessageContact>> ListContactsAsync(
+        public Task<IReadOnlyList<MessageContact>> ListContactsAsync(
             MessageViewer viewer,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.ReadAsync<IReadOnlyList<MessageContact>>(
+                "قائمة من يجوز مراسلتهم",
+                () => ListContactsCoreAsync(viewer, cancellationToken),
+                () => Task.FromResult<IReadOnlyList<MessageContact>>([]));
+
+        private async Task<IReadOnlyList<MessageContact>> ListContactsCoreAsync(
+            MessageViewer viewer,
+            CancellationToken cancellationToken)
         {
             var me = viewer.EmployeeId;
             if (me.Length == 0)
@@ -192,7 +213,7 @@ namespace ZU_AuditIntel.Web.Data
                 .Select(snapshot => snapshot.ConvertTo<User>()!)
                 .Where(user => user.EmployeeId != me)
                 .Where(user => partners.Contains(user.EmployeeId)
-                    || CanStart(viewer, user.Role, user.DepartmentId))
+                    || CanStart(viewer, user.Role))
                 .Select(user => new MessageContact(
                     user.EmployeeId,
                     user.FullName,
@@ -205,10 +226,19 @@ namespace ZU_AuditIntel.Web.Data
                 .ToList();
         }
 
-        public async Task<MessageThreadView?> GetThreadAsync(
+        public Task<MessageThreadView?> GetThreadAsync(
             MessageViewer viewer,
             string otherEmployeeId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.ReadAsync<MessageThreadView?>(
+                "فتح محادثة",
+                () => GetThreadCoreAsync(viewer, otherEmployeeId, cancellationToken),
+                () => Task.FromResult<MessageThreadView?>(null));
+
+        private async Task<MessageThreadView?> GetThreadCoreAsync(
+            MessageViewer viewer,
+            string otherEmployeeId,
+            CancellationToken cancellationToken)
         {
             var me = viewer.EmployeeId;
             if (me.Length == 0 || otherEmployeeId == me)
@@ -227,11 +257,19 @@ namespace ZU_AuditIntel.Web.Data
             return new MessageThreadView(contact, messages);
         }
 
-        public async Task<MessageThreadView?> SendAsync(
+        public Task<MessageThreadView?> SendAsync(
             MessageViewer viewer,
             string otherEmployeeId,
             string body,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("إرسال رسالة",
+                () => SendCoreAsync(viewer, otherEmployeeId, body, cancellationToken));
+
+        private async Task<MessageThreadView?> SendCoreAsync(
+            MessageViewer viewer,
+            string otherEmployeeId,
+            string body,
+            CancellationToken cancellationToken)
         {
             var me = viewer.EmployeeId;
             var text = body.Trim();
@@ -251,7 +289,7 @@ namespace ZU_AuditIntel.Web.Data
 
             if (thread is null)
             {
-                if (!CanStart(viewer, recipient.Role, recipient.DepartmentId))
+                if (!CanStart(viewer, recipient.Role))
                     return null;
 
                 var low = string.CompareOrdinal(me, otherEmployeeId) <= 0 ? me : otherEmployeeId;
@@ -323,16 +361,19 @@ namespace ZU_AuditIntel.Web.Data
                 .ToList();
 
             // الكتابة بعد القراءة: لا يمسّ التصفير إلا عدّاد من فتح، فبقاء الآخر شارةً في رقبته.
+            // والتصفير كتابة خلفية: لو رُدّت السحابة هنا سقطت المحادثة كلها وهي مقروءة، فتُرفض
+            // بهدوء وتبقى السطور لصاحبها.
             var snapshotThread = await thread.GetSnapshotAsync(cancellationToken);
             var state = snapshotThread.ConvertTo<MessageThread>();
             if (state is not null && state.UnreadFor(me) > 0)
             {
                 state.ClearUnread(me);
-                await snapshotThread.Reference.UpdateAsync(new Dictionary<string, object>
-                {
-                    ["unreadForA"] = state.UnreadForA,
-                    ["unreadForB"] = state.UnreadForB
-                }, cancellationToken: cancellationToken);
+                await resilience.WriteQuietlyAsync("تصفير عدّاد غير المقروء",
+                    () => snapshotThread.Reference.UpdateAsync(new Dictionary<string, object>
+                    {
+                        ["unreadForA"] = state.UnreadForA,
+                        ["unreadForB"] = state.UnreadForB
+                    }, cancellationToken: cancellationToken));
             }
 
             return rows;
@@ -396,16 +437,12 @@ namespace ZU_AuditIntel.Web.Data
         }
 
         /// <summary>
-        /// قواعد المراسلة: رئيس الوحدة وصاحب النتيجة يراسلان الكل؛ وممثل الجهة ومدقّقها يراسلان
-        /// رئيس الوحدة وصاحب النتيجة، وكلٌّ منهما زميله في الجهة نفسها. وما سوى ذلك لا يُفتح.
+        /// قواعد المراسلة: رئيس الوحدة وصاحب النتيجة والمدير يراسلون الكل؛ وممثل الجهة يراسل
+        /// رئيس الوحدة وصاحب النتيجة. وما سوى ذلك لا يُفتح.
         /// </summary>
-        private static bool CanStart(MessageViewer me, AuditorRole role, string? departmentId) =>
+        private static bool CanStart(MessageViewer me, AuditorRole role) =>
             me.ReachesEveryone
-            || role is AuditorRole.QualityHead or AuditorRole.FinalResultReader
-            || (me.DepartmentId is not null
-                && me.DepartmentId == departmentId
-                && ((me.IsRepresentative && role == AuditorRole.EntityAuditor)
-                    || (me.IsEntityAuditor && role == AuditorRole.EntityRepresentative)));
+            || role is AuditorRole.QualityHead or AuditorRole.FinalResultReader;
 
         /// <summary>زميل الجهة أولاً، ثم رئيس الوحدة، ثم صاحب النتيجة، ثم المدير، ثم الباقي.</summary>
         private static int Rank(MessageContact contact, string? myDepartmentId) =>

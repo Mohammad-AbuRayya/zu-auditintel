@@ -140,8 +140,8 @@
 	};
 
 	/// <summary>
-	/// كل صاحب حساب يفتح الشاشة التي يملكها على هذا البند: ممثل الجهة لوحتها، والمدقق شاشته،
-	/// وصاحب النتيجة سجل المعتمد لا شاشة توقيع.
+	/// كل صاحب حساب يفتح الشاشة التي يملكها على هذا البند: ممثل الجهة لوحتها، ورئيس الوحدة
+	/// شاشة التدقيق النهائي على كل الجهات، وصاحب النتيجة سجل المعتمد لا شاشة توقيع.
 	/// </summary>
 	private string LinkFor(NotificationRow row)
 	{
@@ -158,10 +158,10 @@
 				or NotificationKind.AgentFailed
 				or NotificationKind.Overridden
 				? $"/Audit/{row.DepartmentId}"
-				: $"/review/{row.DepartmentId}";
+				: "/review";
 		}
 
-		return $"/review/{row.DepartmentId}";
+		return "/review";
 	}
 }
 

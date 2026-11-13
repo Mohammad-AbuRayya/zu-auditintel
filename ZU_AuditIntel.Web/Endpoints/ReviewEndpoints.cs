@@ -6,8 +6,7 @@ namespace ZU_AuditIntel.Web.Endpoints
     {
         /// <summary>
         /// فتح ملف الدليل في تاب جديد. القراءة للتدقيق النهائي حقٌّ لمن يوقّع النتيجة، فلا يُعرض
-        /// الملف لصاحبه: المرفوض من الوكيل لا يصل إلى شاشة بشرية أصلاً. ومدقّق الجهة لا يفتح برقم
-        /// الملف ملفَ جهة أخرى، فجهةُ الملف تُقارَن بجهته قبل أن تُرسَل بايتاته.
+        /// الملف لصاحبه: المرفوض من الوكيل لا يصل إلى شاشة بشرية أصلاً.
         /// </summary>
         public static IEndpointRouteBuilder MapReviewEndpoints(this IEndpointRouteBuilder app)
         {
@@ -28,7 +27,7 @@ namespace ZU_AuditIntel.Web.Endpoints
                 return Results.NotFound();
 
             // لا Forbid هنا: فالفرق بين «ليس لك» و«ليس موجوداً» سؤال لا يجوز أن يُجابه برقم ملف.
-            if (!http.User.CanReviewBoard(file.DepartmentId))
+            if (!http.User.IsFinalReviewer())
                 return Results.NotFound();
 
             var contentType = file.Extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase)

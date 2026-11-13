@@ -16,8 +16,15 @@ namespace ZU_AuditIntel.Web.Data
     /// دليل الحسابات على Firestore. مفتاح الوثيقة هو الرقم الوظيفي نفسه، فالدخول قراءة مباشرة
     /// بـ <c>users/{employeeId}</c> بلا استعلام ولا فهرس مركّب. الرقم الوظيفي ثابت، فتبقى الوثيقة
     /// واحدة طول عمر الحساب، وتغيير الكلمة يكتب أربعة حقول فقط ولا يمسّ ما عداه.
+    ///
+    /// والقراءات محروسة: إن رُدّت السحابة بحصةٍ نافدة قُرئ الحساب من المخبأ المحلي الحقيقي، فيبقى
+    /// الدخول يعمل ببصمة صاحب الحساب نفسها لا بكلمةٍ تُستبدل للاختبار. أما الكتابة فتُرفض أثناء
+    /// الانقطاع، فلا تُحفظ كلمةٌ جديدة على القرص وحده ثم تضيع عند عودة السحابة.
     /// </summary>
-    public sealed class FirestoreAccountDirectory(FirestoreDb firestore) : IAccountDirectory
+    public sealed class FirestoreAccountDirectory(
+        FirestoreDb firestore,
+        FirestoreResilience resilience,
+        LocalDataCache cache) : IAccountDirectory
     {
         private CollectionReference Users { get; } = firestore.Collection(AuditCollections.Users);
 
@@ -51,24 +58,37 @@ namespace ZU_AuditIntel.Web.Data
         {
             // «id» رقم السطر الموروث من القاعدة القديمة، وهو وحده الذي يصلح لهذا البحث:
             // مفتاح الوثيقة رقم وظيفي لا رقم سطر.
-            var snapshot = await Users.WhereEqualTo("id", (long)userId)
-                .Limit(1).GetSnapshotAsync(cancellationToken);
-            var document = snapshot.Documents.FirstOrDefault();
+            return await resilience.ReadAsync<User?>(
+                "قراءة حساب برقم سطره",
+                async () =>
+                {
+                    var snapshot = await Users.WhereEqualTo("id", (long)userId)
+                        .Limit(1).GetSnapshotAsync(cancellationToken);
+                    var document = snapshot.Documents.FirstOrDefault();
 
-            return document is null || !document.Exists ? null : document.ConvertTo<User>();
+                    return document is null || !document.Exists ? null : document.ConvertTo<User>();
+                },
+                async () => (await cache.GetUsersAsync(cancellationToken))?.ById(userId));
         }
 
         public async Task ChangePasswordAsync(User user, string newPassword, CancellationToken cancellationToken = default)
         {
-            var hashed = PasswordHasher.Hash(newPassword);
-
-            await Users.Document(user.EmployeeId).UpdateAsync(new Dictionary<string, object>
+            // الكتابة على سحابةٍ لا تجيب تفصل كلمة صاحب الحساب عمّا في السجل، فتُرفض برسالة عربية
+            // مفهومة ويُعاد المحاولة بعد عودة الخدمة. والتجزئة داخل الحارس فلا تُحرق دورةٌ كاملة على كلمةٍ لن تُكتب.
+            var hashed = await resilience.WriteAsync("تغيير كلمة المرور", async () =>
             {
-                ["passwordSalt"] = hashed.Salt,
-                ["passwordHash"] = hashed.Hash,
-                ["passwordIterations"] = hashed.Iterations,
-                ["mustChangePassword"] = false
-            }, cancellationToken: cancellationToken);
+                var value = PasswordHasher.Hash(newPassword);
+
+                await Users.Document(user.EmployeeId).UpdateAsync(new Dictionary<string, object>
+                {
+                    ["passwordSalt"] = value.Salt,
+                    ["passwordHash"] = value.Hash,
+                    ["passwordIterations"] = value.Iterations,
+                    ["mustChangePassword"] = false
+                }, cancellationToken: cancellationToken);
+
+                return value;
+            });
 
             user.PasswordSalt = hashed.Salt;
             user.PasswordHash = hashed.Hash;
@@ -84,8 +104,15 @@ namespace ZU_AuditIntel.Web.Data
         /// </summary>
         public async Task SeedInitialUsersAsync(CancellationToken cancellationToken = default)
         {
-            var existing = new HashSet<string>(
-                (await Users.GetSnapshotAsync(cancellationToken)).Documents.Select(d => d.Id));
+            var existing = await resilience.ReadAsync<HashSet<string>?>(
+                "قراءة الحسابات للزرع الأولي",
+                async () => new HashSet<string>(
+                    (await Users.GetSnapshotAsync(cancellationToken)).Documents.Select(d => d.Id)),
+                () => Task.FromResult<HashSet<string>?>(null));
+
+            // رُدّت القراءة فلا كتابة على سحابةٍ لا تجيب. الزرع متكرّر الآمن، فالناقص يُضاف في إقلاعٍ لاحق.
+            if (existing is null)
+                return;
 
             var batch = firestore.StartBatch();
             var added = 0;
@@ -123,8 +150,14 @@ namespace ZU_AuditIntel.Web.Data
             if (employeeId.Length == 0)
                 return null;
 
-            var snapshot = await Users.Document(employeeId).GetSnapshotAsync(cancellationToken);
-            return snapshot.Exists ? snapshot.ConvertTo<User>() : null;
+            return await resilience.ReadAsync<User?>(
+                "قراءة حساب بالرقم الوظيفي",
+                async () =>
+                {
+                    var snapshot = await Users.Document(employeeId).GetSnapshotAsync(cancellationToken);
+                    return snapshot.Exists ? snapshot.ConvertTo<User>() : null;
+                },
+                async () => (await cache.GetUsersAsync(cancellationToken))?.ByEmployeeId(employeeId));
         }
 
         // قاعدة صاحب المشروع: كل من مسمّاه «مسؤول كلية» من الكليات هو كادر أكاديمي، وبقية الحسابات موظفون.
@@ -145,7 +178,7 @@ namespace ZU_AuditIntel.Web.Data
 
         // كلمات هذه الحسابات أولية مُعلنة في README ويُجبر النظام على تغييرها عند أول دخول.
         // ممثل جهة واحد لكل جهة: للجهات الإدارية أحد عشر حساباً، ولكل كلية من الكليات الست عشرة حساب.
-        // مع كل جهة مدقّق يدوي واحد بحساب مستقل، فصار لكل لوحة صاحبٌ يرفع وشاشةٌ يوقَّع عليها.
+        // والتدقيق النهائي على كل الجهات بيد رئيس الوحدة من شاشة واحدة، فلكل لوحة صاحبٌ يرفع وشاشةٌ يوقَّع عليها.
         // رقم 1000110 بقايا لوحة الكليات المجمّعة القديمة؛ بقي رقمه وصاحبته الآن كلية الشريعة، ثم تتمة
         // الكليات من 1000113، فلا يُعاد ترقيم حساب موجود ويضيع ما ارتبط به من جلسات.
         // FullName اسم الشخص وJobTitle مسمّاه الوظيفي. الأسماء هنا مواضع شاغرة حتى يرد دليل
@@ -180,38 +213,6 @@ namespace ZU_AuditIntel.Web.Data
             new("1000125", "شادي محي الدين قاسم الزير", "مسؤول كلية التكنولوجيا الهندسية", AuditorRole.EntityRepresentative, DepartmentIds.FacultyEngineeringTechnology, "Zu#Engineering1"),
             new("1000126", "عماد عبد الصمد كامل القرالة", "مسؤول كلية الدراسات العليا", AuditorRole.EntityRepresentative, DepartmentIds.FacultyGraduateStudies, "Zu#Graduate1"),
             new("1000127", "بدر محمد عبد الباسط الرواضية", "مسؤول الكلية التقنية", AuditorRole.EntityRepresentative, DepartmentIds.FacultyTechnical, "Zu#Technical1"),
-
-            // التدقيق اليدوي على كل جهة بيده شخص غير الذي رفع أدلتها، فلكل جهة من الجهات السبع
-            // والعشرين مدقّق خاص بشاشته. أرقامهم مرآة أرقام ممثلي الجهات: 4000104 يقابل 1000104
-            // في الموارد البشرية، و4000110 يقابل 1000110 في كلية الشريعة، فلا يتوهّم أحد قرناً.
-            new("4000101", "منذر تيسير عبد الرحيم العبداللات", "مدقق دائرة المكتبة العامة", AuditorRole.EntityAuditor, DepartmentIds.Library, "Zu#AudLibrary1"),
-            new("4000102", "هاني ماجد سالم الطورة", "مدقق المركز الصحي", AuditorRole.EntityAuditor, DepartmentIds.HealthCenter, "Zu#AudHealth1"),
-            new("4000103", "ساري فتحي كريم الغرايبة", "مدقق دائرة القبول والتسجيل", AuditorRole.EntityAuditor, DepartmentIds.Admission, "Zu#AudAdmission1"),
-            new("4000104", "وائل عبد المطلب حسين البشابشة", "مدقق دائرة الموارد البشرية", AuditorRole.EntityAuditor, DepartmentIds.HumanResources, "Zu#AudHr1"),
-            new("4000105", "مازن سامي داود الزبون", "مدقق ديوان الرئاسة", AuditorRole.EntityAuditor, DepartmentIds.Presidency, "Zu#AudPresidency1"),
-            new("4000106", "عزام لطفي سعيد الشرايحة", "مدقق عمادة شؤون الطلبة", AuditorRole.EntityAuditor, DepartmentIds.StudentAffairs, "Zu#AudStudents1"),
-            new("4000107", "فراس عوني نعمان الرشايدة", "مدقق مركز الحاسوب", AuditorRole.EntityAuditor, DepartmentIds.ItCenter, "Zu#AudItCenter1"),
-            new("4000108", "عادل كامل فريح المحايشة", "مدقق وحدة التطوير وضمان الجودة", AuditorRole.EntityAuditor, DepartmentIds.QualityUnit, "Zu#AudQualityUnit1"),
-            new("4000109", "صفوان بهجت علم الدين الجرادات", "مدقق عمادة الدراسات العليا", AuditorRole.EntityAuditor, DepartmentIds.Postgraduate, "Zu#AudPostgraduate1"),
-            new("4000111", "مكي عوض سالم الحجاجلة", "مدقق عمادة البحث العلمي", AuditorRole.EntityAuditor, DepartmentIds.ScientificResearch, "Zu#AudResearch1"),
-            new("4000112", "حاتم عدلي ياسين المصاروة", "مدقق دائرة اللوازم والمشتريات", AuditorRole.EntityAuditor, DepartmentIds.Procurement, "Zu#AudProcurement1"),
-
-            new("4000110", "ذيب حربي مفلح الفقهاء", "مدقق كلية الشريعة", AuditorRole.EntityAuditor, DepartmentIds.FacultySharia, "Zu#AudSharia1"),
-            new("4000113", "رشدي كمال أنيس الطروانة", "مدقق كلية الآداب", AuditorRole.EntityAuditor, DepartmentIds.FacultyArts, "Zu#AudArts1"),
-            new("4000114", "غسان فخري ناجي الجرارحة", "مدقق كلية العلوم الاقتصادية والإدارية", AuditorRole.EntityAuditor, DepartmentIds.FacultyBusiness, "Zu#AudBusiness1"),
-            new("4000115", "لؤي سمير عطا الله المرايات", "مدقق كلية العلوم التربوية", AuditorRole.EntityAuditor, DepartmentIds.FacultyEducation, "Zu#AudEducation1"),
-            new("4000116", "ياسين مهدي كامل السبيلات", "مدقق كلية القانون", AuditorRole.EntityAuditor, DepartmentIds.FacultyLaw, "Zu#AudLaw1"),
-            new("4000117", "أيمن صبري رشدي الحواتمة", "مدقق كلية الفنون والتصميم", AuditorRole.EntityAuditor, DepartmentIds.FacultyDesign, "Zu#AudDesign1"),
-            new("4000118", "تامر وديع حسن النويرات", "مدقق كلية الإعلام", AuditorRole.EntityAuditor, DepartmentIds.FacultyMedia, "Zu#AudMedia1"),
-            new("4000119", "باسل جودت عقلة الشراح", "مدقق كلية طب الأسنان", AuditorRole.EntityAuditor, DepartmentIds.FacultyDentistry, "Zu#AudDentistry1"),
-            new("4000120", "بسام نبيل فؤاد العجارمة", "مدقق كلية الصيدلة", AuditorRole.EntityAuditor, DepartmentIds.FacultyPharmacy, "Zu#AudPharmacy1"),
-            new("4000121", "جهاد راغب سعد الله الحياصات", "مدقق كلية التمريض", AuditorRole.EntityAuditor, DepartmentIds.FacultyNursing, "Zu#AudNursing1"),
-            new("4000122", "داود زهدي كامل الخلايلة", "مدقق كلية العلوم الطبية المساندة", AuditorRole.EntityAuditor, DepartmentIds.FacultyAlliedHealth, "Zu#AudAllied1"),
-            new("4000123", "إياد شكري نعمان الرمثاوي", "مدقق كلية العلوم", AuditorRole.EntityAuditor, DepartmentIds.FacultyScience, "Zu#AudScience1"),
-            new("4000124", "وليد خيري جميل الشوبكي", "مدقق كلية تكنولوجيا المعلومات", AuditorRole.EntityAuditor, DepartmentIds.FacultyInformationTechnology, "Zu#AudFacultyIt1"),
-            new("4000125", "مروان حسام الدين صالح العبيدين", "مدقق كلية التكنولوجيا الهندسية", AuditorRole.EntityAuditor, DepartmentIds.FacultyEngineeringTechnology, "Zu#AudEngineering1"),
-            new("4000126", "نضال عبد الظاهر فريحان الزبن", "مدقق كلية الدراسات العليا", AuditorRole.EntityAuditor, DepartmentIds.FacultyGraduateStudies, "Zu#AudGraduate1"),
-            new("4000127", "رياض فتحي عبد الصمد المبيض", "مدقق الكلية التقنية", AuditorRole.EntityAuditor, DepartmentIds.FacultyTechnical, "Zu#AudTechnical1"),
 
             new("3000301", "علي أحمد حسين الجبور", "رئيس وحدة التطوير وضمان الجودة", AuditorRole.QualityHead, null, "Zu#Quality1"),
 

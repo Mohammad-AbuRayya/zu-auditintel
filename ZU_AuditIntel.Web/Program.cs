@@ -49,18 +49,21 @@ if (!builder.Environment.IsDevelopment())
     });
 }
 
-// Firestore عميلٌ واحد في عمر العملية: قناة gRPC مُكلفة، والبناء من مفتاح الخدمة لا من سلسلة اتصال.
-builder.Services.AddAuditFirestore(builder.Configuration.GetSection(FirestoreOptions.SectionName));
+// القاعدة المحلية ملفٌ واحد على قرص دائم، وبايتات الأدلة شجرةٌ على القرص نفسه: لا قناة سحابية
+// ولا حصة يومية تنفد. والمساران يأتيان من الإعداد لا ثابتَين في الكود، فالحاوية تربطهما بقرصها
+// الدائم والتشغيل المحلي يبقى على App_Data داخل شجرة التطبيق.
+builder.Services.Configure<LocalDbOptions>(builder.Configuration.GetSection(LocalDbOptions.SectionName));
+builder.Services.AddSingleton<LocalDb>();
+builder.Services.Configure<EvidenceFilesOptions>(builder.Configuration.GetSection(EvidenceFilesOptions.SectionName));
+builder.Services.AddSingleton<LocalEvidenceStorage>();
 
-// الكتالوج ثابت لا تكتب فيه إلا أداة التصدير، فيُقرأ من السحابة مرة واحدة في عمر العملية ويبقى
-// في الذاكرة. أما الباقي فمتاجر جلسة: لا تحتفظ بشيء، فكل واحدة تُبنى مع الطلب.
-builder.Services.AddSingleton<IAuditCatalog, FirestoreAuditCatalog>();
-builder.Services.AddScoped<IAccountDirectory, FirestoreAccountDirectory>();
-builder.Services.Configure<EvidenceBlobOptions>(builder.Configuration.GetSection(EvidenceBlobOptions.SectionName));
-builder.Services.AddSingleton<EvidenceBlobStorage>();
-builder.Services.AddScoped<IEvidenceStore, FirestoreEvidenceStore>();
-builder.Services.AddScoped<INotificationStore, FirestoreNotificationStore>();
-builder.Services.AddScoped<IMessageStore, FirestoreMessageStore>();
+// الكتالوج ثابت لا تكتب فيه إلا أداة الاستيراد، فيُقرأ مرة واحدة في عمر العملية ويبقى في الذاكرة.
+// أما الباقي فمتاجر جلسة: لا تحتفظ بشيء، فكل واحدة تُبنى مع الطلب.
+builder.Services.AddSingleton<IAuditCatalog, SqliteAuditCatalog>();
+builder.Services.AddScoped<IAccountDirectory, SqliteAccountDirectory>();
+builder.Services.AddScoped<IEvidenceStore, SqliteEvidenceStore>();
+builder.Services.AddScoped<INotificationStore, SqliteNotificationStore>();
+builder.Services.AddScoped<IMessageStore, SqliteMessageStore>();
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -95,11 +98,10 @@ builder.Services.AddAuthorization(options =>
         .RequireAuthenticatedUser()
         .RequireAssertion(context => context.User.IsFinalReviewer()));
 
-    // شاشة تدقيق جهة واحدة: الحق موسّع هنا لأن المكوّن نفسه يحبس مدقّق الجهة داخل جهته،
-    // ونقطة الملفات تتحقق من جهة الملف قبل أن ترسل بايتاته.
+    // شاشة التدقيق النهائي ونقطة ملفاتها: الحق لرئيس الوحدة ومدير النظام، وهما من يريان كل الجهات.
     options.AddPolicy(AuthorizationPolicies.CanReviewBoard, policy => policy
         .RequireAuthenticatedUser()
-        .RequireAssertion(context => context.User.IsFinalReviewer() || context.User.IsEntityAuditor()));
+        .RequireAssertion(context => context.User.IsFinalReviewer()));
 
     // صفحة النتيجة النهائية: صاحبها لا يدقّق، فلا يدخلها من له حق تدقيق. هي لقارئ النتيجة وللمدير.
     options.AddPolicy(AuthorizationPolicies.CanReadResults, policy => policy
@@ -134,7 +136,7 @@ builder.Services.AddHttpClient(AuditAiClient.ClientName, (sp, client) =>
 {
     var ai = sp.GetRequiredService<IOptions<AuditAiOptions>>().Value;
     client.BaseAddress = new Uri(ai.BaseUrl);
-    // المهلة لطلب واحد — إرسال أو استطلاع — لا لجلسة فحص كاملة، فال فحص صار مهمةً عند سيرفر الوكلاء.
+    // المهلة لطلب واحد — إرسال أو استطلاع — لا لجلسة فحص كاملة، فالفحص صار مهمةً عند سيرفر الوكلاء.
     client.Timeout = TimeSpan.FromSeconds(ai.TimeoutSeconds);
 });
 builder.Services.AddScoped<AuditAiClient>();
@@ -174,14 +176,14 @@ localizationOptions.RequestCultureProviders = new List<IRequestCultureProvider>
 
 app.UseRequestLocalization(localizationOptions);
 
-using (var scope = app.Services.CreateScope())
-{
-    // الحسابات وحدها ما يُنشأ عند الإقلاع: مفتاح الوثيقة رقم وظيفي، فالناقص يُضاف دون أن يمسّ
-    // أحدٌ حساباً غيّر صاحبه كلمته. أما الكتالوج فثابت لا تكتب فيه إلا أداة التصدير، وإلا
-    // الزرع المعلّق في نموذج EF الذي يولّد ترحيلاً يمحو ما كتبه صاحب اللوحة بيده.
-    var directory = scope.ServiceProvider.GetRequiredService<IAccountDirectory>();
-    await directory.SeedInitialUsersAsync();
-}
+// المخطط قبل أول طلب: الجداول والفهارس تُنشأ إن لم تكن، ولا يُمسّ ما فيها. وهي كتابةٌ على قرص
+// محلي لا نداءٌ عبر الشبكة، فلا تحجب الإقلاع إلا بقدر ما يستغرقه إنشاء ملف.
+await app.Services.GetRequiredService<LocalDb>().InitializeAsync();
+
+// الحسابات وحدها ما يُنشأ عند الإقلاع: مفتاح الصف رقم وظيفي، فالناقص يُضاف دون أن يمسّ أحدٌ
+// حساباً غيّر صاحبه كلمته. أما الكتالوج فثابت لا تكتب فيه إلا أداة الاستيراد.
+// والزرع بعد أن يستمع المنفذ لا قبله: أول زائر لا ينتظر تجزئة سبعٍ وخمسين كلمة مرور.
+app.Lifetime.ApplicationStarted.Register(() => _ = SeedInitialAccountsAsync(app));
 
 app.MapStaticAssets();
 app.MapAccountEndpoints();
@@ -192,3 +194,17 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static async Task SeedInitialAccountsAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    try
+    {
+        await scope.ServiceProvider.GetRequiredService<IAccountDirectory>().SeedInitialUsersAsync();
+    }
+    catch (Exception ex)
+    {
+        // الزرع متكرّر الآمن، فالناقص يُضاف في إقلاعٍ لاحق ولا تُقتل العملية من أجله.
+        app.Logger.LogWarning(ex, "تعذّر زرع الحسابات الأولية عند الإقلاع؛ سيُعاد المحاولة في إقلاعٍ لاحق.");
+    }
+}

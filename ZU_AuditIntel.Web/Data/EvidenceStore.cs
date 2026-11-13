@@ -261,7 +261,9 @@ namespace ZU_AuditIntel.Web.Data
     public sealed class FirestoreEvidenceStore(
         FirestoreDb firestore,
         EvidenceBlobStorage storage,
-        INotificationStore notifications) : IEvidenceStore
+        INotificationStore notifications,
+        FirestoreResilience resilience,
+        LocalDataCache cache) : IEvidenceStore
     {
         /// <summary>أقصى ما تستوعبه دفعة كتابة واحدة، مع هامش لما يتّسع له النداء من تفرّعات.</summary>
         private const int BatchLimit = 400;
@@ -270,9 +272,16 @@ namespace ZU_AuditIntel.Web.Data
         private CollectionReference Items { get; } = firestore.Collection(AuditCollections.Items);
         private CollectionReference Departments { get; } = firestore.Collection(AuditCollections.Departments);
 
-        public async Task<EvidenceSubmission> SaveAsync(
+        // الكتابات محروسة كالقراءات: ما دام الوضع متدهوراً تُرفض قبل أن تُجرَّب، فلا تُرفع بايتات إلى
+        // الدلو ووثيقتها تُردّ، ولا يظهر قرارٌ في الشاشة ولم يُكتب. والرفض رسالةٌ عربية تُمسك في الصفحة.
+        public Task<EvidenceSubmission> SaveAsync(
             NewEvidenceUpload upload,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("رفع ملف دليل", () => SaveCoreAsync(upload, cancellationToken));
+
+        private async Task<EvidenceSubmission> SaveCoreAsync(
+            NewEvidenceUpload upload,
+            CancellationToken cancellationToken)
         {
             // المفتاح شجرةُ الجهة والبند نفسها التي كانت على القرص، فقيمة storedPath لا تتغيّر دلالتها.
             var key = await storage.PutAsync(
@@ -318,7 +327,10 @@ namespace ZU_AuditIntel.Web.Data
                 .ToList();
         }
 
-        public async Task DeleteAsync(string submissionId, CancellationToken cancellationToken = default)
+        public Task DeleteAsync(string submissionId, CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("حذف ملف دليل", () => DeleteCoreAsync(submissionId, cancellationToken));
+
+        private async Task DeleteCoreAsync(string submissionId, CancellationToken cancellationToken)
         {
             var reference = Submissions.Document(submissionId);
             var submission = (await reference.GetSnapshotAsync(cancellationToken)).ConvertTo<EvidenceSubmission>();
@@ -331,7 +343,10 @@ namespace ZU_AuditIntel.Web.Data
             await storage.DeleteAsync(submission.StoredPath, cancellationToken);
         }
 
-        public async Task DeleteForItemAsync(int auditItemId, CancellationToken cancellationToken = default)
+        public Task DeleteForItemAsync(int auditItemId, CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("حذف ملفات بند", () => DeleteForItemCoreAsync(auditItemId, cancellationToken));
+
+        private async Task DeleteForItemCoreAsync(int auditItemId, CancellationToken cancellationToken)
         {
             var documents = await DocumentsForItemAsync(auditItemId, cancellationToken);
             if (documents.Count == 0)
@@ -347,7 +362,10 @@ namespace ZU_AuditIntel.Web.Data
                 await storage.DeleteAsync(snapshot.GetValue<string>("storedPath"), cancellationToken);
         }
 
-        public async Task InvalidateItemOutcomeAsync(int auditItemId, CancellationToken cancellationToken = default)
+        public Task InvalidateItemOutcomeAsync(int auditItemId, CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("إبطال نتيجة فحص بند", () => InvalidateItemOutcomeCoreAsync(auditItemId, cancellationToken));
+
+        private async Task InvalidateItemOutcomeCoreAsync(int auditItemId, CancellationToken cancellationToken)
         {
             var documents = (await DocumentsForItemAsync(auditItemId, cancellationToken))
                 .Where(snapshot => snapshot.GetValue<string>("agentOutcome") != nameof(AgentOutcome.NotChecked))
@@ -368,10 +386,17 @@ namespace ZU_AuditIntel.Web.Data
             }, cancellationToken);
         }
 
-        public async Task SetItemEvidenceAsync(
+        public Task SetItemEvidenceAsync(
             int auditItemId,
             IReadOnlyCollection<string> providedEvidence,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("تأشير أدلة البند",
+                () => SetItemEvidenceCoreAsync(auditItemId, providedEvidence, cancellationToken));
+
+        private async Task SetItemEvidenceCoreAsync(
+            int auditItemId,
+            IReadOnlyCollection<string> providedEvidence,
+            CancellationToken cancellationToken)
         {
             var text = providedEvidence.Count == 0 ? null : string.Join('\n', providedEvidence);
 
@@ -381,11 +406,19 @@ namespace ZU_AuditIntel.Web.Data
                 cancellationToken);
         }
 
-        public async Task ApplyAgentOutcomeAsync(
+        public Task ApplyAgentOutcomeAsync(
             int auditItemId,
             int score,
             string? findings,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("كتابة نتيجة الفحص الآلي",
+                () => ApplyAgentOutcomeCoreAsync(auditItemId, score, findings, cancellationToken));
+
+        private async Task ApplyAgentOutcomeCoreAsync(
+            int auditItemId,
+            int score,
+            string? findings,
+            CancellationToken cancellationToken)
         {
             var outcome = AgentGate.IsApproved(score) ? AgentOutcome.Approved : AgentOutcome.Rejected;
             var checkedAt = DateTime.Now;
@@ -408,11 +441,19 @@ namespace ZU_AuditIntel.Web.Data
                 null, score, null, null, checkedAt, cancellationToken);
         }
 
-        public async Task<string> SkipAgentAuditAsync(
+        public Task<string> SkipAgentAuditAsync(
             int auditItemId,
             string actorName,
             string actorEmployeeId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("تجاوز بوابة الوكيل",
+                () => SkipAgentAuditCoreAsync(auditItemId, actorName, actorEmployeeId, cancellationToken));
+
+        private async Task<string> SkipAgentAuditCoreAsync(
+            int auditItemId,
+            string actorName,
+            string actorEmployeeId,
+            CancellationToken cancellationToken)
         {
             // لا درجة تُكتب: انتحال درجة وكيل في سجل التدقيق كذب على رئيس الوحدة، والملاحظة تقول الحقيقة.
             var note = $"تجاوز يدوي لبوابة التدقيق الآلي: {actorName} (الرقم الوظيفي {actorEmployeeId}) " +
@@ -437,15 +478,19 @@ namespace ZU_AuditIntel.Web.Data
             return note;
         }
 
-        public async Task<byte[]?> ReadBytesAsync(string submissionId, CancellationToken cancellationToken = default)
-        {
-            var snapshot = await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken);
+        public Task<byte[]?> ReadBytesAsync(string submissionId, CancellationToken cancellationToken = default) =>
+            resilience.ReadAsync<byte[]?>(
+                "قراءة بايتات ملف دليل",
+                async () =>
+                {
+                    var snapshot = await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken);
 
-            // الوثيقة إن لم تكن فهي محذوفة: تقرأ null لا تستثني، فنقطة الملفات تردّ بأربعٍ لا وجدت.
-            return snapshot.Exists
-                ? await storage.GetAsync(snapshot.GetValue<string>("storedPath"), cancellationToken)
-                : null;
-        }
+                    // الوثيقة إن لم تكن فهي محذوفة: تقرأ null لا تستثني، فنقطة الملفات تردّ بأربعٍ لا وجدت.
+                    return snapshot.Exists
+                        ? await storage.GetAsync(snapshot.GetValue<string>("storedPath"), cancellationToken)
+                        : null;
+                },
+                () => Task.FromResult<byte[]?>(null));
 
         public Task<EvidenceFile?> GetFileAsync(
             string submissionId,
@@ -460,8 +505,11 @@ namespace ZU_AuditIntel.Web.Data
             bool approvedOnly,
             CancellationToken cancellationToken)
         {
-            var submission = (await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken))
-                .ConvertTo<EvidenceSubmission>();
+            var submission = await resilience.ReadAsync<EvidenceSubmission?>(
+                "قراءة وثيقة ملف دليل",
+                async () => (await Submissions.Document(submissionId).GetSnapshotAsync(cancellationToken))
+                    .ConvertTo<EvidenceSubmission>(),
+                () => Task.FromResult<EvidenceSubmission?>(null));
 
             // ملف لم يُعتمد بعد لا يُفتح لصاحب النتيجة، وغير الموجود لا حدث له: فلا رقم ملف يكشف بنداً ناقصاً.
             if (submission is null || (approvedOnly && submission.FinalOutcome != FinalOutcome.Approved))
@@ -531,13 +579,23 @@ namespace ZU_AuditIntel.Web.Data
                     });
         }
 
-        public async Task ApplyFinalOutcomeAsync(
+        public Task ApplyFinalOutcomeAsync(
             string submissionId,
             FinalOutcome outcome,
             string? note,
             string reviewerEmployeeId,
             string reviewerName,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default) =>
+            resilience.WriteAsync("توقيع التدقيق النهائي",
+                () => ApplyFinalOutcomeCoreAsync(submissionId, outcome, note, reviewerEmployeeId, reviewerName, cancellationToken));
+
+        private async Task ApplyFinalOutcomeCoreAsync(
+            string submissionId,
+            FinalOutcome outcome,
+            string? note,
+            string reviewerEmployeeId,
+            string reviewerName,
+            CancellationToken cancellationToken)
         {
             var reference = Submissions.Document(submissionId);
 
@@ -570,8 +628,7 @@ namespace ZU_AuditIntel.Web.Data
 
             // التجميع في الذاكرة: عدد الملفات في نموذج أولي صغير، وحالة البند تُشتق من قرارات كل ملفاته
             // فلو فُصّلت في الاستعلام لأصبحت قراءة الوثائق أوضح منها.
-            var files = (await Submissions.GetSnapshotAsync(cancellationToken)).Documents
-                .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!);
+            var files = await AllFilesAsync(cancellationToken);
 
             var itemStates = files
                 .GroupBy(s => s.DepartmentId)
@@ -610,10 +667,7 @@ namespace ZU_AuditIntel.Web.Data
             var departments = await DepartmentsOrderedAsync(cancellationToken);
 
             // ما أجازَه الوكيل وحده يدخل العدّ: فالبند المعتمد هو ما وقّعَ المدقّق كل ملفٍ وصلَه منه.
-            var filesByItem = (await Submissions
-                    .WhereEqualTo("agentOutcome", AgentOutcome.Approved.ToString())
-                    .GetSnapshotAsync(cancellationToken)).Documents
-                .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
+            var filesByItem = (await AgentApprovedFilesAsync(cancellationToken))
                 .GroupBy(s => s.AuditItemId)
                 .ToDictionary(g => g.Key, g => g
                     .OrderBy(s => s.UploadedAt).ThenBy(s => s.Id, StringComparer.Ordinal)
@@ -650,8 +704,23 @@ namespace ZU_AuditIntel.Web.Data
         /// <summary>
         /// سطر إشعار عن بند، بعد أن يُقرأ عنوانه واسم جهته من وثيقتيهما: العنوان والجهة يُحفظان في
         /// السطر كما هما لحظة الحدث، فلا يتبع سطرُ السجل تغييراً لاحقاً في الكتالوج.
+        ///
+        /// والسطر كله كتابة خلفية، وقراءتا عنوانه واسم جهته داخل حارسه: فسقوطهما لا يُسقط القرار
+        /// الذي كُتب قبله، ولا يقول لصاحب الشاشة «لم يُحفظ» وهو محفوظ.
         /// </summary>
-        private async Task NotifyAsync(
+        private Task NotifyAsync(
+            int auditItemId,
+            NotificationKind kind,
+            string? fileName,
+            int? score,
+            string? actorName,
+            string? note,
+            DateTime createdAt,
+            CancellationToken cancellationToken) =>
+            resilience.WriteQuietlyAsync("سطر إشعار عن بند",
+                () => NotifyCoreAsync(auditItemId, kind, fileName, score, actorName, note, createdAt, cancellationToken));
+
+        private async Task NotifyCoreAsync(
             int auditItemId,
             NotificationKind kind,
             string? fileName,
@@ -686,34 +755,76 @@ namespace ZU_AuditIntel.Web.Data
 
         private sealed record CatalogItem(int Id, string Title, string IsoReference, IReadOnlyList<string> RequiredEvidence);
 
-        /// <summary>بنود جهة واحدة بترتيب اللوحة نفسه الذي تُعرض به الأرقام.</summary>
+        /// <summary>
+        /// بنود جهة واحدة بترتيب اللوحة نفسه الذي تُعرض به الأرقام. الكتالوج ثابت لا تكتب فيه إلا أداة
+        /// التصدير، فله نسخة محلية حقيقية: إن رُدّت السحابة بحصةٍ نافدة قُرئت بنود الجهة من القرص
+        /// بالترتيب نفسه، فلا يتغيّر رقمُ بندٍ ولا يختفي عنوانُه.
+        /// </summary>
         private async Task<IReadOnlyList<CatalogItem>> ItemsOfAsync(
-            string departmentId, CancellationToken cancellationToken)
-        {
-            var documents = await Items
-                .WhereEqualTo("departmentId", departmentId)
-                .GetSnapshotAsync(cancellationToken);
+            string departmentId, CancellationToken cancellationToken) =>
+            await resilience.ReadAsync<IReadOnlyList<CatalogItem>>(
+                "بنود جهة من الكتالوج",
+                async () =>
+                {
+                    var documents = await Items
+                        .WhereEqualTo("departmentId", departmentId)
+                        .GetSnapshotAsync(cancellationToken);
 
-            return documents.Documents
-                .Select(snapshot => snapshot.ConvertTo<AuditItem>()!)
-                .OrderBy(item => item.SortOrder)
-                .ThenBy(item => item.Id)
-                .Select(item => new CatalogItem(item.Id, item.Title, item.IsoReference, item.RequiredEvidence))
-                .ToList();
-        }
+                    return documents.Documents
+                        .Select(snapshot => snapshot.ConvertTo<AuditItem>()!)
+                        .OrderBy(item => item.SortOrder)
+                        .ThenBy(item => item.Id)
+                        .Select(item => new CatalogItem(item.Id, item.Title, item.IsoReference, item.RequiredEvidence))
+                        .ToList();
+                },
+                async () =>
+                {
+                    var local = await cache.GetCatalogAsync(cancellationToken);
+                    if (local is null)
+                        return [];
 
-        /// <summary>ملفات جهة: شرطٌ واحد على الجهة، فالترتيب شأن محلي.</summary>
-        private async Task<IReadOnlyList<EvidenceSubmission>> FilesForDepartmentAsync(
-            string departmentId, CancellationToken cancellationToken)
-        {
-            var documents = await Submissions
-                .WhereEqualTo("departmentId", departmentId)
-                .GetSnapshotAsync(cancellationToken);
+                    return local.Items
+                        .Where(item => item.DepartmentId == departmentId)
+                        .OrderBy(item => item.SortOrder)
+                        .ThenBy(item => item.Id)
+                        .Select(item => new CatalogItem(item.Id, item.Title, item.IsoReference, item.RequiredEvidence))
+                        .ToList();
+                });
 
-            return documents.Documents
-                .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
-                .ToList();
-        }
+        /// <summary>
+        /// ملفات جهة: شرطٌ واحد على الجهة، فالترتيب شأن محلي. لا نسخة محلية للملفات المرفوعة — جدولها
+        /// في القاعدة المحلية فارغ — فتُقدَّم خالية أثناء الانقطاع ولا يُخترع ملفٌ لم يُرفع.
+        /// </summary>
+        private Task<IReadOnlyList<EvidenceSubmission>> FilesForDepartmentAsync(
+            string departmentId, CancellationToken cancellationToken) =>
+            resilience.ReadAsync<IReadOnlyList<EvidenceSubmission>>(
+                "ملفات أدلة جهة",
+                async () => (await Submissions
+                        .WhereEqualTo("departmentId", departmentId)
+                        .GetSnapshotAsync(cancellationToken)).Documents
+                    .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
+                    .ToList(),
+                () => Task.FromResult<IReadOnlyList<EvidenceSubmission>>([]));
+
+        /// <summary>كل ملفات الأدلة لإحصاءات الجهات: تُقدَّم خالية أثناء الانقطاع، فيبقى اسم الجهة وعدد بنودها.</summary>
+        private Task<IReadOnlyList<EvidenceSubmission>> AllFilesAsync(CancellationToken cancellationToken) =>
+            resilience.ReadAsync<IReadOnlyList<EvidenceSubmission>>(
+                "كل ملفات الأدلة",
+                async () => (await Submissions.GetSnapshotAsync(cancellationToken)).Documents
+                    .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
+                    .ToList(),
+                () => Task.FromResult<IReadOnlyList<EvidenceSubmission>>([]));
+
+        /// <summary>ما أجازَه الوكيل وحده: تُقدَّم خالية أثناء الانقطاع فلا يظهر بندٌ معتمداً بلا توقيع.</summary>
+        private Task<IReadOnlyList<EvidenceSubmission>> AgentApprovedFilesAsync(CancellationToken cancellationToken) =>
+            resilience.ReadAsync<IReadOnlyList<EvidenceSubmission>>(
+                "ملفات الأدلة المجازة من الوكيل",
+                async () => (await Submissions
+                        .WhereEqualTo("agentOutcome", AgentOutcome.Approved.ToString())
+                        .GetSnapshotAsync(cancellationToken)).Documents
+                    .Select(snapshot => snapshot.ConvertTo<EvidenceSubmission>()!)
+                    .ToList(),
+                () => Task.FromResult<IReadOnlyList<EvidenceSubmission>>([]));
 
         private async Task<IReadOnlyList<DocumentSnapshot>> DocumentsForItemAsync(
             int auditItemId, CancellationToken cancellationToken)
@@ -725,18 +836,30 @@ namespace ZU_AuditIntel.Web.Data
             return documents.Documents;
         }
 
-        private async Task<IReadOnlyList<AuditDepartment>> DepartmentsOrderedAsync(
-            CancellationToken cancellationToken)
-        {
-            var documents = await Departments.GetSnapshotAsync(cancellationToken);
+        /// <summary>الجهات بترتيب الاسم: لها نسخة محلية حقيقية تُقرأ متى رُدّت السحابة، فيبقى ترتيب اللوحات هو هو.</summary>
+        private Task<IReadOnlyList<AuditDepartment>> DepartmentsOrderedAsync(
+            CancellationToken cancellationToken) =>
+            resilience.ReadAsync<IReadOnlyList<AuditDepartment>>(
+                "جهات التدقيق",
+                async () => (await Departments.GetSnapshotAsync(cancellationToken)).Documents
+                    .Select(snapshot => new AuditDepartment(
+                        snapshot.Id,
+                        snapshot.GetValue<string>("departmentName")))
+                    .OrderBy(department => department.DepartmentName, StringComparer.Ordinal)
+                    .ToList(),
+                async () =>
+                {
+                    var local = await cache.GetCatalogAsync(cancellationToken);
+                    if (local is null)
+                        return [];
 
-            return documents.Documents
-                .Select(snapshot => new AuditDepartment(
-                    snapshot.Id,
-                    snapshot.GetValue<string>("departmentName")))
-                .OrderBy(department => department.DepartmentName, StringComparer.Ordinal)
-                .ToList();
-        }
+                    return local.Departments
+                        .Select(department => new AuditDepartment(
+                            department.DepartmentId,
+                            department.DepartmentName))
+                        .OrderBy(department => department.DepartmentName, StringComparer.Ordinal)
+                        .ToList();
+                });
 
         private static ReviewFileRow ToReviewRow(EvidenceSubmission s) => new(
             s.Id,

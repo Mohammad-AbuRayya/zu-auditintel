@@ -1,11 +1,10 @@
 @page "/review"
-@page "/review/{DepartmentId}"
 @layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
-@rendermode InteractiveServer
+@* بلا تصيير مسبق: قراءة البيانات مرة واحدة على الدارة لا مرتين (SSR ثم دارة)، فالاستعلامات نصف ما كانت. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize(Policy = AuthorizationPolicies.CanReviewBoard)]
 @inject IEvidenceStore Store
 @inject IAuditCatalog Catalog
-@inject NavigationManager Navigation
 @using ZU_AuditIntel.Web.Endpoints
 @using System.Globalization
 
@@ -333,25 +332,18 @@
                     <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
                         <i class="bi bi-building-check text-primary fs-5"></i> @StatsCardTitle
                     </h2>
-                    @if (!Scoped)
-                    {
-                        <div class="input-group zu-stats-search">
-                            <span class="input-group-text bg-white border"><i class="bi bi-search text-muted"></i></span>
-                            <input type="search" class="form-control border" @bind="StatsQuery" @bind:event="oninput"
-                                   placeholder="@T("ابحث عن جهة أو بند أو رمز آيزو")" aria-label="@T("ابحث عن جهة أو بند أو رمز آيزو")" />
-                        </div>
-                    }
+                    <div class="input-group zu-stats-search">
+                        <span class="input-group-text bg-white border"><i class="bi bi-search text-muted"></i></span>
+                        <input type="search" class="form-control border" @bind="StatsQuery" @bind:event="oninput"
+                               placeholder="@T("ابحث عن جهة أو بند أو رمز آيزو")" aria-label="@T("ابحث عن جهة أو بند أو رمز آيزو")" />
+                    </div>
                 </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0 zu-stat-table">
                     <thead class="table-light">
                         <tr>
-                            @* صفحة الجهة الواحدة لا عمود جهة فيها: كل سطر جهتها، فتُحذف من الجدول كله *@
-                            @if (!Scoped)
-                            {
-                                <th class="ps-4">@T("الجهة")</th>
-                            }
+                            <th class="ps-4">@T("الجهة")</th>
                             <th class="text-center">@T("عدد بنودها")</th>
                             <th class="text-center">@T("تم رفعها")</th>
                             <th class="text-center">@T("بانتظار تدقيقك")</th>
@@ -364,7 +356,7 @@
                         @if (ShownStats.Count == 0)
                         {
                             <tr>
-                                <td colspan="@(Scoped ? 6 : 7)" class="text-center text-muted py-4">
+                                <td colspan="7" class="text-center text-muted py-4">
                                     <i class="bi bi-search"></i> @T("لا جهة أو بند يطابق هذا البحث")
                                 </td>
                             </tr>
@@ -372,27 +364,24 @@
                         @foreach (var stat in ShownStats)
                         {
                             <tr>
-                                @if (!Scoped)
-                                {
-                                    <td class="ps-4">
-                                        @* اسم الجهة يفتح بنودها في اللوحة نفسها، فلا رابط خارجي إلى صفحة الجهة *@
-                                        <button type="button" class="zu-dept-link" title="@T("كل بنود هذه الجهة")"
-                                                @onclick="() => SelectStatAsync(stat, StatColumn.AllItems)">
-                                            @T(stat.DepartmentName)
-                                        </button>
-                                        @* جهةٌ جذبها إلى الجدول بندُها لا اسمها: تُذكر البنود المطابقة تحته *@
-                                        @if (MatchedItems(stat) is { Count: > 0 } matched)
-                                        {
-                                            <div class="small text-muted mt-1 zu-stats-match">
-                                                <i class="bi bi-search"></i>
-                                                @foreach (var item in matched)
-                                                {
-                                                    <span class="me-2" dir="auto">@F("بند {0}: {1}", item.Number, T(item.Title))</span>
-                                                }
-                                            </div>
-                                        }
-                                    </td>
-                                }
+                                <td class="ps-4">
+                                    @* اسم الجهة يفتح بنودها في اللوحة نفسها، فلا رابط خارجي إلى صفحة الجهة *@
+                                    <button type="button" class="zu-dept-link" title="@T("كل بنود هذه الجهة")"
+                                            @onclick="() => SelectStatAsync(stat, StatColumn.AllItems)">
+                                        @T(stat.DepartmentName)
+                                    </button>
+                                    @* جهةٌ جذبها إلى الجدول بندُها لا اسمها: تُذكر البنود المطابقة تحته *@
+                                    @if (MatchedItems(stat) is { Count: > 0 } matched)
+                                    {
+                                        <div class="small text-muted mt-1 zu-stats-match">
+                                            <i class="bi bi-search"></i>
+                                            @foreach (var item in matched)
+                                            {
+                                                <span class="me-2" dir="auto">@F("بند {0}: {1}", item.Number, T(item.Title))</span>
+                                            }
+                                        </div>
+                                    }
+                                </td>
                                 @foreach (var cell in CellsFor(stat))
                                 {
                                     <td class="text-center">
@@ -649,23 +638,11 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
 
-    /// <summary>معرّف الجهة في المسار: غائب على شاشة كل الجهات، وحاضر على صفحة جهة واحدة.</summary>
-    [Parameter]
-    public string? DepartmentId { get; set; }
-
-    /// <summary>صفحة جهة واحدة؟ فالجدول والنسبة واللوحة تتقلّص كلها إلى هذه الجهة.</summary>
-    private bool Scoped => !string.IsNullOrEmpty(DepartmentId);
-
-    private string DepartmentName =>
-        Stats.FirstOrDefault(s => s.DepartmentId == DepartmentId)?.DepartmentName ?? string.Empty;
-
+    /// <summary>الجهات المعروضة في الجدول: كلها، أو ما طابق خانة البحث باسم جهة أو بند أو رمز آيزو.</summary>
     private IReadOnlyList<DepartmentAuditStat> ShownStats
     {
         get
         {
-            if (Scoped)
-                return Stats.Where(s => s.DepartmentId == DepartmentId).ToList();
-
             var query = StatsQuery.Trim();
             if (query.Length == 0)
                 return Stats;
@@ -674,21 +651,13 @@
         }
     }
 
-    private string PageHeading => Scoped
-        ? F("التدقيق النهائي على بنود {0}", T(DepartmentName))
-        : T("التدقيق النهائي على بنود الجهات");
+    private string PageHeading => T("التدقيق النهائي على بنود الجهات");
 
-    private string StatsCardTitle => Scoped
-        ? F("إحصائيات {0}", T(DepartmentName))
-        : T("إحصائيات الجهات");
+    private string StatsCardTitle => T("إحصائيات الجهات");
 
-    private string ProgressLabel => Scoped
-        ? F("اعتماد بنود {0}", T(DepartmentName))
-        : T("اعتماد بنود الجامعة");
+    private string ProgressLabel => T("اعتماد بنود الجامعة");
 
-    private string SheetTitle => Scoped
-        ? F("التدقيق النهائي على بنود {0} | ZU-AuditIntel", T(DepartmentName))
-        : T("التدقيق النهائي | ZU-AuditIntel");
+    private string SheetTitle => T("التدقيق النهائي | ZU-AuditIntel");
 
     private string ReviewerName { get; set; } = T("رئيس وحدة التطوير وضمان الجودة");
     private string ReviewerEmployeeId { get; set; } = string.Empty;
@@ -696,11 +665,8 @@
     /// <summary>من يرى كل الجهات على شاشة واحدة: رئيس الوحدة ومدير النظام.</summary>
     private bool SeesEveryDepartment { get; set; }
 
-    /// <summary>جهة المدقّق اليدوي، أو null لغيره. صفحته محصورة فيها، فروابط ما سواها تُطوى له.</summary>
-    private string? OwnAuditedDepartment { get; set; }
-
-    /// <summary>التوقيع حقٌّ على جهة بعينها: كل جهة لمن يرى الكل، وجهته وحده لمدقّقها.</summary>
-    private bool CanSign => SeesEveryDepartment || (OwnAuditedDepartment is not null && OwnAuditedDepartment == DepartmentId);
+    /// <summary>التوقيع حقٌّ لمن يرى كل الجهات: رئيس الوحدة ومدير النظام.</summary>
+    private bool CanSign => SeesEveryDepartment;
 
     /// <summary>مدير النظام داخل شاشة رئيس الوحدة بصلاحياته كاملة، والشريط الأعلى يخبره بذلك.</summary>
     private bool IsAdmin { get; set; }
@@ -731,9 +697,9 @@
 
     /// <summary>
     /// أرقام الرأس تبقى أرقام الجامعة كلها ولو ضيّق البحث الجدول: العنوان يقول «اعتماد بنود الجامعة»،
-    /// فلا تنقص نسبته لأن كلمة بحثٍ ضيّقت ما يُعرض تحته. وصفحة الجهة الواحدة أرقامُها هي.
+    /// فلا تنقص نسبته لأن كلمة بحثٍ ضيّقت ما يُعرض تحته.
     /// </summary>
-    private IReadOnlyList<DepartmentAuditStat> TotalsStats => Scoped ? ShownStats : Stats;
+    private IReadOnlyList<DepartmentAuditStat> TotalsStats => Stats;
 
     private int TotalItems => TotalsStats.Sum(s => s.TotalItems);
     private int TotalClosed => TotalsStats.Sum(s => s.ItemsApproved);
@@ -900,72 +866,13 @@
         {
             var user = (await AuthState).User;
             SeesEveryDepartment = user.IsFinalReviewer();
-            OwnAuditedDepartment = user.AuditedDepartmentId();
-
-            if (!SeesEveryDepartment && OwnAuditedDepartment is null)
-            {
-                IsBouncing = true;
-                Navigation.NavigateTo("/pending");
-                return;
-            }
-
-            // مدقّق الجهة لا يفتح جدول الكل ولا صفحة جهة غيره: فمساراه كلاهما يرجعانه إلى شاشته.
-            if (OwnAuditedDepartment is not null && DepartmentId != OwnAuditedDepartment)
-            {
-                IsBouncing = true;
-                Navigation.NavigateTo($"/review/{OwnAuditedDepartment}");
-                return;
-            }
-
             IsAdmin = user.IsSystemAdministrator();
             ReviewerName = user.Identity?.Name ?? ReviewerName;
             ReviewerEmployeeId = user.FindFirst(AuditClaims.EmployeeId)?.Value ?? string.Empty;
         }
 
         Stats = (await Store.GetDepartmentStatsAsync()).ToList();
-
-        // لا تُحمَل أرقام الجهات الأخرى إلى شاشة مدقّقٍ أصلاً، فيبقى ما يُرسم وما يُقرأ جهةً واحدة.
-        if (OwnAuditedDepartment is not null)
-            Stats = Stats.Where(s => s.DepartmentId == OwnAuditedDepartment).ToList();
-
-        // البحث عن بندٍ أو رمز آيزو يحتاج فهرس بنود الجهات المعروضة كلها؛ صفحة جهة واحدة بلا خانة بحث أصلاً.
-        if (!Scoped)
-            ItemIndex = await Catalog.GetItemIndexAsync();
-
-        await ApplyRouteAsync();
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        // لا تُعاد الوجهة بعد قفزةٍ إلى شاشة أخرى: فقفزتان معاً تصيران إلى /pending بدل صفحة صاحبه.
-        if (IsBouncing)
-            return;
-
-        // المسار يتغيّر على Instance نفسه: فتُعاد الجهة المختارة، أما ضغطات المستخدم على الأرقام فلا تُلغى.
-        if (RoutedDepartmentId != DepartmentId)
-            await ApplyRouteAsync();
-    }
-
-    private string? RoutedDepartmentId;
-
-    /// <summary>المكوّن في طريقه إلى شاشة أخرى، فلا يُحمّل شيئاً ولا يقفز قفزةً ثانية.</summary>
-    private bool IsBouncing;
-
-    /// <summary>صفحة الجهة تفتح بنودَ جهتها فوراً، ولا لوحة فارغة انتظاراً لضغطة رقم.</summary>
-    private async Task ApplyRouteAsync()
-    {
-        RoutedDepartmentId = DepartmentId;
-        if (!Scoped)
-            return;
-
-        var stat = Stats.FirstOrDefault(s => s.DepartmentId == DepartmentId);
-        if (stat is null)
-        {
-            Navigation.NavigateTo(SeesEveryDepartment ? "/review" : "/pending");
-            return;
-        }
-
-        await SelectStatAsync(stat, StatColumn.AllItems);
+        ItemIndex = await Catalog.GetItemIndexAsync();
     }
 
     private async Task SelectStatAsync(DepartmentAuditStat stat, StatColumn metric)
@@ -1017,6 +924,11 @@
             MessageClass = "alert-success";
             await RefreshAsync();
         }
+        catch (FirestoreUnavailableException)
+        {
+            Message = T("الخدمة السحابية لا تجيب الآن، فلم يُحفظ التغيير. حاول مرة أخرى بعد عودة الخدمة.");
+            MessageClass = "alert-danger";
+        }
         finally
         {
             IsBusy = false;
@@ -1041,6 +953,11 @@
             Message = T("رُفض الملف، فصار بندُه «تم رفضه» وعاد إلى الجهة لإجراء تصحيحي.");
             MessageClass = "alert-warning";
             await RefreshAsync();
+        }
+        catch (FirestoreUnavailableException)
+        {
+            Message = T("الخدمة السحابية لا تجيب الآن، فلم يُحفظ التغيير. حاول مرة أخرى بعد عودة الخدمة.");
+            MessageClass = "alert-danger";
         }
         finally
         {

@@ -39,6 +39,26 @@ html.zu-side-collapsed .zu-board-shell {
     min-width: 0;
 }
 
+/* لافتة الانقطاع: سطرٌ فوق محتوى اللوحة يقول إن القراءة من القرص، فلا يحسب صاحبها أن ملفاته ضاعت. */
+.zu-cloud-note {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    margin-bottom: 1rem;
+    padding: .7rem 1rem;
+    border: 1px solid #ffe08a;
+    border-radius: .9rem;
+    background: #fff8e1;
+    color: #7a5c00;
+    font-size: .88rem;
+    line-height: 1.8;
+}
+
+.zu-cloud-note i {
+    flex: none;
+    font-size: 1.05rem;
+}
+
 /* الزرار ملتصق بزاوية الشريط فلا يُحسب عنصراً قبل صورة المستخدم. */
 .zu-side-toggle {
     position: absolute;

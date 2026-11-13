@@ -1,6 +1,7 @@
 @page "/messages"
 @layout ZU_AuditIntel.Web.Components.Layout.BoardLayout
-@rendermode InteractiveServer
+@* بلا تصيير مسبق: قراءة البيانات مرة واحدة على الدارة لا مرتين (SSR ثم دارة)، فالاستعلامات نصف ما كانت. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize]
 @inject IMessageStore MessageStore
 @inject IJSRuntime JS
@@ -108,7 +109,7 @@
                             <div class="zu-msg-empty mx-auto mb-3"><i class="bi bi-chat-square-text"></i></div>
                             <h2 class="h5 fw-bold mb-2">@T("اختر محادثة أو ابدأ واحدة جديدة")</h2>
                             <p class="text-muted mb-0" style="max-width:34rem;">
-                                @T("كل جهة تراسل من لها به عمل: رئيس وحدة التطوير وضمان الجودة، وصاحب النتيجة النهائية، وزميلها في الجهة نفسها.")
+                                @T("كل جهة تراسل من لها به عمل: رئيس وحدة التطوير وضمان الجودة، وصاحب النتيجة النهائية.")
                             </p>
                         </div>
                     </div>
@@ -247,7 +248,18 @@
         IsBusy = true;
         Error = null;
 
-        var view = await MessageStore.SendAsync(Viewer, Selected.EmployeeId, Draft);
+        MessageThreadView? view;
+        try
+        {
+            view = await MessageStore.SendAsync(Viewer, Selected.EmployeeId, Draft);
+        }
+        catch (FirestoreUnavailableException)
+        {
+            Error = T("الخدمة السحابية لا تجيب الآن، فلم تُرسل الرسالة. حاول مرة أخرى بعد عودة الخدمة.");
+            IsBusy = false;
+            return;
+        }
+
         if (view is null)
         {
             Error = T("تعذّر إرسال الرسالة. حاول مرة أخرى.");

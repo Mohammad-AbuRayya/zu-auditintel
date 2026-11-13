@@ -56,7 +56,7 @@ namespace ZU_AuditIntel.Web.Data
     /// داخل مصفوفة واحدة، فتُغني استعلامة array-contains مفردة عن فهرس مركّب، والترتيب في
     /// الذاكرة على مئتي سطر لا أكثر.
     /// </summary>
-    public sealed class FirestoreNotificationStore(FirestoreDb firestore) : INotificationStore
+    public sealed class FirestoreNotificationStore(FirestoreDb firestore, FirestoreResilience resilience) : INotificationStore
     {
         /// <summary>سقف ما تُعرضه الصفحة؛ السجل يطول مع رفع كل ملف، والصفحة للجديد لا لأرشيف كامل.</summary>
         public const int MaxRows = 200;
@@ -134,10 +134,11 @@ namespace ZU_AuditIntel.Web.Data
                 });
             }
 
-            await batch.CommitAsync(cancellationToken);
+            await resilience.WriteQuietlyAsync(
+                "تعليم الإشعارات مقروءة", () => batch.CommitAsync(cancellationToken));
         }
 
-        public async Task RecordAsync(Notification notification, CancellationToken cancellationToken = default)
+        public Task RecordAsync(Notification notification, CancellationToken cancellationToken = default)
         {
             notification.VisibleTo = Audience(notification.Kind, notification.DepartmentId);
             notification.ReadBy = [];
@@ -146,7 +147,10 @@ namespace ZU_AuditIntel.Web.Data
                 ? Notifications.Document()
                 : Notifications.Document(notification.Id);
 
-            await reference.SetAsync(notification, SetOptions.Overwrite, cancellationToken);
+            // سطر السجل أثرٌ لا قرار: سقوطه لا يُسقط الحدث الذي كُتب قبله، فيُرفض بهدوء ويُسجَّل تحذيره.
+            return resilience.WriteQuietlyAsync(
+                "سطر إشعار",
+                () => reference.SetAsync(notification, SetOptions.Overwrite, cancellationToken));
         }
 
         /// <summary>
@@ -182,8 +186,12 @@ namespace ZU_AuditIntel.Web.Data
             else
                 return [];
 
-            var snapshot = await query.Limit(ScanLimit).GetSnapshotAsync(cancellationToken);
-            return snapshot.Documents;
+            // السجل تشغيلي لا كتالوجاً: لا نسخة محلية له، فيُقدَّم خالياً أثناء الانقطاع بدل أن يُخترع
+            // سطرٌ لم يقع. وبخلوه ترجع قائمة «غير المقروء» فارغة، فلا يكتب تعليمُ القراءة على سحابةٍ لا تجيب.
+            return await resilience.ReadAsync<IReadOnlyList<DocumentSnapshot>>(
+                "سجل الإشعارات",
+                async () => (await query.Limit(ScanLimit).GetSnapshotAsync(cancellationToken)).Documents,
+                () => Task.FromResult<IReadOnlyList<DocumentSnapshot>>([]));
         }
     }
 }

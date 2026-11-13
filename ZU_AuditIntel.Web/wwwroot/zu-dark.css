@@ -296,11 +296,6 @@ html[data-bs-theme="dark"] .zu-board-icon {
     color: #7ab3ff;
 }
 
-html[data-bs-theme="dark"] .zu-review-icon {
-    background-color: #143226;
-    color: #5fd39a;
-}
-
 /* شاشة التدقيق النهائي: سطور الملفات وأسماء الجهات في جدول الإحصائيات */
 html[data-bs-theme="dark"] .zu-review-page {
     background-color: #0f1523;
@@ -429,6 +424,12 @@ html[data-bs-theme="dark"] .zu-input {
     }
 
 html[data-bs-theme="dark"] .zu-pw-note {
+    background-color: #2b2517;
+    border-color: #5a4b1c;
+    color: #f0d78a;
+}
+
+html[data-bs-theme="dark"] .zu-cloud-note {
     background-color: #2b2517;
     border-color: #5a4b1c;
     color: #f0d78a;
