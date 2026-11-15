@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.RateLimiting;
+using System.Globalization;
 using System.Threading.RateLimiting;
 using ZU_AuditIntel.Web;
 using ZU_AuditIntel.Web.Components;
@@ -161,11 +162,20 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
-var supportedCultures = new[] { "ar", "en" };
-var localizationOptions = new RequestLocalizationOptions()
-    .SetDefaultCulture("ar")
-    .AddSupportedCultures(supportedCultures)
-    .AddSupportedUICultures(supportedCultures);
+// فاصل التاريخ في ثقافة "ar" تسبقه علامة اتجاه خفيّة (U+200F)، و«/» في صيغةٍ مثل "yyyy/MM/dd"
+// ليست شرطةً حرفية بل تُستبدل بالفاصل، فتتسرّب العلامة إلى كل تاريخٍ في كل شاشة. نسخةٌ بفاصلٍ
+// مجرّد تُمرَّر إلى الوسيط نفسه: فهو يطابق الثقافة بالاسم ويستعمل النسخة المعطاة لا الأصل المخزّن.
+// والتمرير بالنسخ لا بالأسماء لأن AddSupportedCultures تقبل نصوصاً فتبني نسخها من الأصل.
+var arabicCulture = (CultureInfo)CultureInfo.GetCultureInfo("ar").Clone();
+arabicCulture.DateTimeFormat.DateSeparator = "/";
+
+var supportedCultures = new[] { arabicCulture, CultureInfo.GetCultureInfo("en") };
+var localizationOptions = new RequestLocalizationOptions
+{
+    DefaultRequestCulture = new RequestCulture(arabicCulture),
+    SupportedCultures = supportedCultures,
+    SupportedUICultures = supportedCultures
+};
 
 // مصدر اللغة كوكي الموقع وحده: ترويسة المتصفح تُسقط نصف شاشة بالعربية ونصفها بالإنجليزية
 // قبل أن يختار صاحب الحساب لغةً، فالافتراضي يبقى العربية حتى يضغط زر اللغة.
@@ -190,6 +200,12 @@ app.MapAccountEndpoints();
 app.MapReviewEndpoints();
 app.MapBoardEvidenceEndpoints();
 app.MapFinalResultEndpoints();
+
+// نبضة النشاط: أخفّ نقطة في التطبيق، لا تلمس قاعدة البيانات ولا تطلب مصادقة، ووظيفتها الوحيدة
+// تسجيل حركة HTTP عند وسيط Fly.io فيبقى الجهاز مستيقظاً ما دام تبويبٌ مفتوح يرسلها دورياً.
+// ومع auto_stop_machines ينام الجهاز وحده بعد إغلاق كل التبويبات وتوقّف النبضات.
+app.MapGet("/ping", () => Results.Ok("pong"));
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

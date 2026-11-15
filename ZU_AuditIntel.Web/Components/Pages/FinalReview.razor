@@ -5,6 +5,9 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.CanReviewBoard)]
 @inject IEvidenceStore Store
 @inject IAuditCatalog Catalog
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@implements IDisposable
 @using ZU_AuditIntel.Web.Endpoints
 @using System.Globalization
 
@@ -32,16 +35,448 @@
 
     /* خانة البحث عن جهة أو بند أو رمز آيزو: تُدفع إلى الطرف الآخر من سطر العنوان. */
     .zu-stats-search {
-        flex: 0 1 320px;
+        position: relative;
+        flex: 0 1 340px;
         min-width: 220px;
         margin-inline-start: auto;
     }
 
-    /* البنود التي جذبت جهتها إلى الجدول، تحت اسمها: سطرٌ يلتفّ ولا يمدّ عمود الجهة. */
+        .zu-stats-search .zu-search-icon {
+            position: absolute;
+            inset-inline-start: 13px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            pointer-events: none;
+        }
+
+        .zu-stats-search input {
+            width: 100%;
+            padding: 9px 14px;
+            padding-inline-start: 38px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background-color: #fff;
+            color: #0f172a;
+            font-size: .9rem;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+
+            .zu-stats-search input::placeholder {
+                color: #94a3b8;
+            }
+
+            .zu-stats-search input:focus {
+                outline: none;
+                border-color: #93c5fd;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+            }
+
+    /* شارة عدد الجهات المعروضة بجانب العنوان: تتقلّص مع البحث فتقول كم جهة أمام العين الآن. */
+    .zu-stats-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 26px;
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        background-color: #eff6ff;
+        border: 1px solid #dbeafe;
+        color: #1d4ed8;
+        font-size: .78rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    /* شبكة البطاقات: العمود 340px فما فوق، وmin() تمنع فيضان العمود حين يضيق الحاوي عن 340. */
+    .zu-dept-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+        gap: 16px;
+    }
+
+    .zu-dept-card {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 18px;
+        cursor: pointer;
+        container-type: inline-size;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+        .zu-dept-card:hover {
+            transform: translateY(-2px);
+            border-color: #cbd5e1;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, .10);
+        }
+
+        .zu-dept-card:focus-visible {
+            outline: none;
+            border-color: #94a3b8;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .2);
+        }
+
+    .zu-dept-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .zu-dept-headtext {
+        min-width: 0;
+    }
+
+    .zu-dept-name {
+        font-size: 1rem;
+        font-weight: 700;
+        line-height: 1.5;
+        color: #0f172a;
+        overflow-wrap: anywhere;
+    }
+
+    .zu-dept-total {
+        flex: none;
+        padding: 3px 11px;
+        border: 1px solid #dbeafe;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        font-size: .74rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .zu-dept-progress-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+
+    .zu-dept-progress-label {
+        font-size: .8rem;
+        font-weight: 600;
+        color: #64748b;
+    }
+
+    .zu-dept-progress-value {
+        font-size: .98rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .zu-dept-track {
+        height: 6px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        overflow: hidden;
+    }
+
+    .zu-dept-fill {
+        height: 100%;
+        border-radius: 999px;
+        transition: width .3s ease;
+    }
+
+    /* لون الشريط يتبع التقدّم: رمادي عند الصفر، أزرق في الطريق، أخضر حين اقترب من التمام. */
+    .zu-dept-fill.zero {
+        background: #cbd5e1;
+    }
+
+    .zu-dept-fill.mid {
+        background: #2563eb;
+    }
+
+    .zu-dept-fill.high {
+        background: #16a34a;
+    }
+
+    .zu-dept-progress-value.zero {
+        color: #94a3b8;
+    }
+
+    .zu-dept-progress-value.mid {
+        color: #2563eb;
+    }
+
+    .zu-dept-progress-value.high {
+        color: #16a34a;
+    }
+
+    /* أسفل البطاقة: أربعة مؤشرات حالة ثم زر التقرير، خمس خانات متساوية في صف واحد. */
+    .zu-dept-cells {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+
+    .zu-dept-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        min-width: 0;
+        min-height: 54px;
+        padding: 7px 3px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: #f8fafc;
+        color: #94a3b8;
+        font-family: inherit;
+        cursor: pointer;
+        transition: transform .15s ease, box-shadow .15s ease, background-color .15s ease;
+    }
+
+        .zu-dept-cell b {
+            font-size: .98rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .zu-dept-cell i {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .zu-dept-cell span {
+            font-size: .62rem;
+            font-weight: 700;
+            line-height: 1.25;
+            text-align: center;
+        }
+
+        .zu-dept-cell:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 10px rgba(15, 23, 42, .12);
+        }
+
+        .zu-dept-cell:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .3);
+        }
+
+        .zu-dept-cell:disabled {
+            cursor: default;
+        }
+
+    .zu-cell-zero {
+        background: #f8fafc;
+        border-color: #f1f5f9;
+        color: #94a3b8;
+    }
+
+    .zu-cell-sky {
+        background: #f0f9ff;
+        border-color: #e0f2fe;
+        color: #0369a1;
+    }
+
+    .zu-cell-amber {
+        background: #fffbeb;
+        border-color: #fef3c7;
+        color: #b45309;
+    }
+
+    .zu-cell-red {
+        background: #fef2f2;
+        border-color: #fee2e2;
+        color: #b91c1c;
+    }
+
+    .zu-cell-green {
+        background: #f0fdf4;
+        border-color: #dcfce7;
+        color: #15803d;
+    }
+
+    /* زر التقرير: نيليّ داكن يقفّز عن المؤشرات الأربعة، فليس حالةً بل مخرجاً من البطاقة. */
+    .zu-cell-report {
+        background: #3730a3;
+        border-color: #3730a3;
+        color: #fff;
+    }
+
+        .zu-cell-report:hover:not(:disabled) {
+            background: #4338ca;
+            border-color: #4338ca;
+        }
+
+    /* البنود التي جذبت جهتها إلى الشبكة، تحت اسمها: سطرٌ يلتفّ ولا يمدّ البطاقة. */
     .zu-stats-match {
         display: flex;
         flex-wrap: wrap;
         gap: 0 10px;
+    }
+
+    /* خمس خانات في 340px تُقرأ، وفي حاوٍ أضيق تصير 8px فلا تُقرأ: نقيس عرض البطاقة نفسها لا الشاشة،
+       لأن الشريط الجانبي ثابت العرض في كل المقاسات فيقتطع من الحاوي لا من النافذة. */
+    @@container (max-width: 280px) {
+        .zu-dept-cells {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .zu-cell-report {
+            grid-column: span 3;
+        }
+    }
+
+    @@container (max-width: 170px) {
+        .zu-dept-cells {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .zu-cell-report {
+            grid-column: span 2;
+        }
+
+        .zu-dept-head {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+
+    /* ===== واجهة الجهة المفتوحة =====
+       الشبكة تختفي كلها ويحلّ محلها: مسارٌ في الأعلى، فبطاقة ملخص، فكبسولات فلترة، فصفوف البنود.
+       الترتيب منطقيّ (بداية/وسط/طرف) لا يمين/يسار، فينقلب مع لسان الصفحة وحده. */
+    .zu-dept-crumb {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+        font-size: .88rem;
+        font-weight: 700;
+    }
+
+    .zu-crumb-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 4px;
+        border-radius: 8px;
+        color: #2563eb;
+        text-decoration: none;
+    }
+
+        .zu-crumb-link:hover {
+            color: #1d4ed8;
+            text-decoration: underline;
+        }
+
+        .zu-crumb-link:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .25);
+        }
+
+    .zu-crumb-sep {
+        flex: none;
+        color: #94a3b8;
+        font-size: .72rem;
+    }
+
+    .zu-crumb-current {
+        min-width: 0;
+        color: #0f172a;
+        overflow-wrap: anywhere;
+    }
+
+    .zu-dept-summary {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 16px 24px;
+        margin-bottom: 16px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 18px;
+    }
+
+    .zu-summary-id {
+        flex: 1 1 260px;
+        min-width: 0;
+    }
+
+    .zu-summary-name {
+        font-size: 1.12rem;
+        font-weight: 700;
+        line-height: 1.5;
+        color: #0f172a;
+        overflow-wrap: anywhere;
+    }
+
+    .zu-summary-tags {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .zu-summary-iso {
+        padding: 3px 11px;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        background: #f8fafc;
+        color: #475569;
+        font-size: .74rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .zu-summary-progress {
+        flex: 1 1 240px;
+        min-width: 0;
+        max-width: 420px;
+    }
+
+    /* زر التقرير بالنيليّ نفسه في خانة البطاقة: مخرجٌ واحدٌ بلونٍ واحد في الشاشتين. */
+    .zu-summary-report {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-inline-start: auto;
+        padding: 10px 18px;
+        border: 1px solid #3730a3;
+        border-radius: 10px;
+        background: #3730a3;
+        color: #fff;
+        font-family: inherit;
+        font-size: .9rem;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: background-color .15s ease, border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    }
+
+        .zu-summary-report:hover {
+            background: #4338ca;
+            border-color: #4338ca;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(55, 48, 163, .28);
+        }
+
+        .zu-summary-report:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(67, 56, 202, .35);
+        }
+
+    /* الكبسولات في رأس لوحة البنود: الشريط يضيق عن سطر واحد فيلتفّ تحت العنوان لا فوقه. */
+    .zu-board-filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
     }
 
     /* صندوق الملف: صفٌّ واحد — الاسم في جهة البداية، الأزرار في الوسط، الحالة في الطرف — ثم تفاصيل تُفتح بالضغط */
@@ -149,39 +584,111 @@
         overflow-y: auto;
     }
 
-    .zu-dept-link {
-        background: none;
-        border: 0;
-        padding: 0;
-        font-weight: 600;
-        color: #0d6efd;
-        text-align: right;
+    /* ===== نافذة التقرير =====
+       غطاءٌ ثابت على النافذة كلها لا على عمود المحتوى: فيبلغ حافة الشاشة على الجوال أيضاً
+       ويغطي الشريط الجانبي (z-index 1030)، فالورقة تُقرأ كاملةً ولو ضاق المتصفح. */
+    html.zu-overlay-open body {
+        overflow: hidden;
     }
 
-        .zu-dept-link:hover {
-            text-decoration: underline;
-        }
-
-    /* الأرقام في جدول الإحصائيات هي أداة التحكم: كل رقم يفتح بنود الجهة في خانته */
-    .zu-stat-cell {
-        background: none;
-        border: 0;
-        padding: 2px;
-        line-height: 1;
-        border-radius: 999px;
+    .zu-report-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1080;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 24px 16px;
+        overflow: auto;
+        background: rgba(15, 23, 42, .55);
     }
 
-        .zu-stat-cell:hover:not(:disabled) {
-            box-shadow: 0 0 0 3px rgba(13, 110, 253, .18);
+        .zu-report-overlay:focus {
+            outline: none;
         }
 
-        .zu-stat-cell:disabled {
-            opacity: .55;
+    .zu-report-dialog {
+        display: flex;
+        flex-direction: column;
+        width: min(1040px, 100%);
+        max-height: calc(100vh - 48px);
+        background: #fff;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, .35);
+    }
+
+    .zu-report-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid #e2e8f0;
+        background: #f8fafc;
+    }
+
+    .zu-report-bar-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-inline-end: auto;
+        font-size: .95rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    /* جسم النافذة يمرّ، وشريط تمريره من لوحة ألوان الموقع لا من افتراض المتصفح. */
+    .zu-report-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 18px;
+        background: #eef2f7;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 #eef2f7;
+    }
+
+        .zu-report-scroll::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
         }
 
-        .zu-stat-cell.active {
-            box-shadow: 0 0 0 3px rgba(13, 110, 253, .55);
+        .zu-report-scroll::-webkit-scrollbar-track {
+            background: #eef2f7;
         }
+
+        .zu-report-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border: 2px solid #eef2f7;
+            border-radius: 999px;
+        }
+
+            .zu-report-scroll::-webkit-scrollbar-thumb:hover {
+                background: #94a3b8;
+            }
+
+    @@media (max-width: 576px) {
+        .zu-report-overlay {
+            padding: 0;
+        }
+
+        .zu-report-dialog {
+            width: 100%;
+            height: 100vh;
+            max-height: 100vh;
+            border-radius: 0;
+        }
+
+        .zu-report-scroll {
+            padding: 10px;
+        }
+
+        .zu-report-bar-title {
+            width: 100%;
+            margin-inline-end: 0;
+        }
+    }
 
     /* صندوق البند: عنوانه واضح لا باهت، ورمزه، وعدد ملفاته، وحالته من أربع. */
     .zu-item-row {
@@ -324,118 +831,166 @@
             </div>
         }
 
-        @* ===================== إحصائيات كل الجهات ===================== *@
+        @* ===================== إحصائيات كل الجهات =====================
+           الشبكة وصفحة الجهة وجهان لشاشة واحدة: ما دامت جهةٌ مفتوحة فالشبكة غائبة كلها،
+           فلا يبقى تحت الصفحة جدولٌ كاملٌ لا يقرؤه أحد. *@
+        @if (SelectedStat is null)
+        {
         <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden">
             <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
-                @* العنوان في جهة البداية وخانة البحث في الطرف الآخر من الصفحة، وجهاً لوجه في سطر واحد. *@
+                @* العنوان وشارة العدد في جهة البداية، وخانة البحث في الطرف الآخر، وجهاً لوجه في سطر واحد. *@
                 <div class="d-flex flex-wrap align-items-center gap-3">
                     <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
                         <i class="bi bi-building-check text-primary fs-5"></i> @StatsCardTitle
+                        <span class="zu-stats-count" dir="ltr" title="@T("عدد الجهات المعروضة الآن")">@ShownStats.Count</span>
                     </h2>
-                    <div class="input-group zu-stats-search">
-                        <span class="input-group-text bg-white border"><i class="bi bi-search text-muted"></i></span>
-                        <input type="search" class="form-control border" @bind="StatsQuery" @bind:event="oninput"
+                    <div class="zu-stats-search">
+                        <i class="bi bi-search zu-search-icon"></i>
+                        <input type="search" @bind="StatsQuery" @bind:event="oninput"
                                placeholder="@T("ابحث عن جهة أو بند أو رمز آيزو")" aria-label="@T("ابحث عن جهة أو بند أو رمز آيزو")" />
                     </div>
                 </div>
             </div>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 zu-stat-table">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="ps-4">@T("الجهة")</th>
-                            <th class="text-center">@T("عدد بنودها")</th>
-                            <th class="text-center">@T("تم رفعها")</th>
-                            <th class="text-center">@T("بانتظار تدقيقك")</th>
-                            <th class="text-center">@T("تم رفضها")</th>
-                            <th class="text-center">@T("معتمد نهائي")</th>
-                            <th class="pe-4" style="min-width: 170px">@T("نسبة الإنجاز")</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (ShownStats.Count == 0)
-                        {
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    <i class="bi bi-search"></i> @T("لا جهة أو بند يطابق هذا البحث")
-                                </td>
-                            </tr>
-                        }
-                        @foreach (var stat in ShownStats)
-                        {
-                            <tr>
-                                <td class="ps-4">
-                                    @* اسم الجهة يفتح بنودها في اللوحة نفسها، فلا رابط خارجي إلى صفحة الجهة *@
-                                    <button type="button" class="zu-dept-link" title="@T("كل بنود هذه الجهة")"
-                                            @onclick="() => SelectStatAsync(stat, StatColumn.AllItems)">
-                                        @T(stat.DepartmentName)
-                                    </button>
-                                    @* جهةٌ جذبها إلى الجدول بندُها لا اسمها: تُذكر البنود المطابقة تحته *@
+            <div class="card-body bg-white px-4 pb-4 pt-0">
+                @if (ShownStats.Count == 0)
+                {
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-search"></i> @T("لا جهة أو بند يطابق هذا البحث")
+                    </div>
+                }
+
+                <div class="zu-dept-grid">
+                    @foreach (var stat in ShownStats)
+                    {
+                        var level = ProgressLevel(stat.CompletionPercent);
+                        <div class="zu-dept-card"
+                             role="button" tabindex="0" dir="@Ui.Dir"
+                             title="@T("اضغط لفتح كل بنود هذه الجهة")"
+                             @onclick="() => SelectStatAsync(stat, StatColumn.AllItems)"
+                             @onkeydown="e => OnCardKeyDownAsync(e, stat)">
+
+                            <div class="zu-dept-head">
+                                <div class="zu-dept-headtext">
+                                    <div class="zu-dept-name" dir="auto">@T(stat.DepartmentName)</div>
+                                    @* جهةٌ جذبها إلى الشبكة بندُها لا اسمها: تُذكر البنود المطابقة تحت اسمها *@
                                     @if (MatchedItems(stat) is { Count: > 0 } matched)
                                     {
                                         <div class="small text-muted mt-1 zu-stats-match">
                                             <i class="bi bi-search"></i>
                                             @foreach (var item in matched)
                                             {
-                                                <span class="me-2" dir="auto">@F("بند {0}: {1}", item.Number, T(item.Title))</span>
+                                                <span dir="auto">@F("بند {0}: {1}", item.Number, T(item.Title))</span>
                                             }
                                         </div>
                                     }
-                                </td>
+                                </div>
+                                <span class="zu-dept-total">@F("{0} بند", stat.TotalItems)</span>
+                            </div>
+
+                            <div>
+                                <div class="zu-dept-progress-head">
+                                    <span class="zu-dept-progress-label">@T("نسبة الإنجاز")</span>
+                                    <span class="zu-dept-progress-value @level" dir="ltr">@stat.CompletionPercent%</span>
+                                </div>
+                                <div class="zu-dept-track" role="progressbar"
+                                     aria-label="@F("نسبة إنجاز {0}", T(stat.DepartmentName))"
+                                     aria-valuenow="@stat.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+                                    <div class="zu-dept-fill @level" style="width: @(stat.CompletionPercent)%"></div>
+                                </div>
+                            </div>
+
+                            @* أربع حالات ثم التقرير: كل خانة لها ضغطتها، فلا يبتلع ضغطُها بطاقةَ الجهة. *@
+                            <div class="zu-dept-cells">
                                 @foreach (var cell in CellsFor(stat))
                                 {
-                                    <td class="text-center">
-                                        <button type="button" class="zu-stat-cell @(IsActive(stat, cell.Metric) ? "active" : "")"
-                                                title="@T(cell.Hint)" disabled="@(cell.Count == 0)"
-                                                @onclick="() => SelectStatAsync(stat, cell.Metric)">
-                                            @if (cell.Count > 0)
-                                            {
-                                                <span class="badge rounded-pill @cell.BadgeClass">@cell.Count</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">0</span>
-                                            }
-                                        </button>
-                                    </td>
+                                    <button type="button" class="zu-dept-cell @cell.CssClass"
+                                            title="@T(cell.Hint)" disabled="@(cell.Count == 0)"
+                                            @onclick="() => SelectStatAsync(stat, cell.Metric)" @onclick:stopPropagation="true">
+                                        <b dir="ltr">@cell.Count</b>
+                                        <span>@T(cell.Label)</span>
+                                    </button>
                                 }
-                                <td class="pe-4">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <div class="progress flex-grow-1 rounded-pill" style="height: 10px" role="progressbar"
-                                             aria-label="@F("نسبة إنجاز {0}", T(stat.DepartmentName))" aria-valuenow="@stat.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
-                                            <div class="progress-bar @(stat.CompletionPercent switch { 100 => "bg-success", >= 50 => "bg-primary", _ => "bg-info" })"
-                                                 style="width: @(stat.CompletionPercent)%"></div>
-                                        </div>
-                                        <span class="small fw-semibold @(stat.CompletionPercent == 0 ? "text-muted" : "text-primary")">@stat.CompletionPercent%</span>
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        @* ===================== لوحة البنود التي فتحها الرقم ===================== *@
-        <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-                    <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
-                        <i class="bi bi-list-check text-primary fs-5"></i> @PanelTitle
-                    </h2>
-                    @if (SelectedStat is not null)
-                    {
-                        <div class="d-flex flex-wrap align-items-center gap-2">
-                            <span class="badge rounded-pill text-bg-light border">@F("{0} بنداً", VisibleItems.Count)</span>
-                            @if (SelectedMetric != StatColumn.AllItems)
-                            {
-                                <button type="button" class="btn btn-sm btn-outline-primary rounded-3"
-                                        @onclick="() => SelectStatAsync(SelectedStat, StatColumn.AllItems)">
-                                    @F("كل بنود {0}", T(SelectedStat.DepartmentName))
+                                <button type="button" class="zu-dept-cell zu-cell-report"
+                                        title="@T("معاينة تقرير فحص التدقيق الداخلي لهذه الجهة وطباعته وتنزيله")"
+                                        @onclick="() => OpenReportAsync(stat)" @onclick:stopPropagation="true">
+                                    <i class="bi bi-file-earmark-text-fill"></i>
+                                    <span>@T("التقرير")</span>
                                 </button>
-                            }
+                            </div>
                         </div>
                     }
+                </div>
+            </div>
+        </div>
+        }
+        else
+        {
+        @* ===================== واجهة الجهة المفتوحة ===================== *@
+        <nav class="zu-dept-crumb" dir="@Ui.Dir" aria-label="@T("مسار التنقل")">
+            @* الرابط حقيقي: يعمل بالزر الأوسط وفي تبويب جديد، والضغط العادي يُعالج في الدارة فلا تُعاد الصفحة. *@
+            <a class="zu-crumb-link" href="/review" title="@T("العودة إلى شبكة الجهات")"
+               @onclick="BackToGridAsync" @onclick:preventDefault="true">
+                <i class="bi bi-grid-3x3-gap-fill"></i> @T("جميع الجهات")
+            </a>
+            <i class="bi @(Ui.IsEnglish ? "bi-chevron-right" : "bi-chevron-left") zu-crumb-sep" aria-hidden="true"></i>
+            <span class="zu-crumb-current" dir="auto" aria-current="page">@T(SelectedStat.DepartmentName)</span>
+        </nav>
+
+        @* بطاقة الملخص: هوية الجهة في البداية، والإنجاز في الوسط، والتقرير في الطرف. *@
+        <div class="zu-dept-summary" dir="@Ui.Dir">
+            <div class="zu-summary-id">
+                <div class="zu-summary-name" dir="auto">@T(SelectedStat.DepartmentName)</div>
+                <div class="zu-summary-tags">
+                    <span class="zu-dept-total">@F("{0} بند", SelectedStat.TotalItems)</span>
+                    <span class="zu-summary-iso" dir="ltr">ISO 21001:2025</span>
+                </div>
+            </div>
+
+            <div class="zu-summary-progress">
+                <div class="zu-dept-progress-head">
+                    <span class="zu-dept-progress-label">@T("نسبة الإنجاز")</span>
+                    <span class="zu-dept-progress-value @ProgressLevel(SelectedStat.CompletionPercent)" dir="ltr">@SelectedStat.CompletionPercent%</span>
+                </div>
+                <div class="zu-dept-track" role="progressbar"
+                     aria-label="@F("نسبة إنجاز {0}", T(SelectedStat.DepartmentName))"
+                     aria-valuenow="@SelectedStat.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+                    <div class="zu-dept-fill @ProgressLevel(SelectedStat.CompletionPercent)" style="width: @(SelectedStat.CompletionPercent)%"></div>
+                </div>
+            </div>
+
+            <button type="button" class="zu-summary-report"
+                    title="@T("معاينة تقرير فحص التدقيق الداخلي لهذه الجهة وطباعته وتنزيله")"
+                    @onclick="() => OpenReportAsync(SelectedStat)">
+                <i class="bi bi-file-earmark-text-fill"></i> @T("التقرير")
+            </button>
+        </div>
+
+        @* ===================== لوحة بنود الجهة ===================== *@
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-header bg-white border-0 rounded-top-4 pt-4 px-4 pb-3">
+                <div class="zu-board-filters">
+                    <h2 class="h6 fw-bold mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-list-check text-primary fs-5"></i> @T("بنود الجهة")
+                        <span class="badge rounded-pill text-bg-light border">@F("{0} بنداً", VisibleItems.Count)</span>
+                    </h2>
+                    @* الكبسولات نفسها المعتمدة في لوحة الجهة: نصٌّ وشارة عدّاد بلون حالتها، بلا نقطة ملوّنة. *@
+                    <div class="zu-item-filters" role="group" aria-label="@T("فلترة البنود")" dir="@Ui.Dir">
+                        <button type="button" class="@PillClass(StatColumn.AllItems)"
+                                aria-pressed="@AriaPressed(StatColumn.AllItems)"
+                                @onclick="() => SelectStatAsync(SelectedStat, StatColumn.AllItems)">
+                            <span>@T("الكل")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-all" dir="ltr">@SelectedStat.TotalItems</span>
+                        </button>
+                        @foreach (var cell in CellsFor(SelectedStat))
+                        {
+                            <button type="button" class="@PillClass(cell.Metric)" title="@T(cell.Hint)"
+                                    aria-pressed="@AriaPressed(cell.Metric)"
+                                    @onclick="() => SelectStatAsync(SelectedStat, cell.Metric)">
+                                <span>@T(cell.Label)</span>
+                                <span class="badge rounded-pill zu-filter-count @CountClass(cell.Metric)" dir="ltr">@cell.Count</span>
+                            </button>
+                        }
+                    </div>
                 </div>
             </div>
 
@@ -445,20 +1000,12 @@
                     <div class="alert @MessageClass rounded-3 py-2 small">@Message</div>
                 }
 
-                @if (SelectedStat is null)
-                {
-                    <div class="text-center py-5">
-                        <div class="zu-stat-icon rounded-4 bg-light text-muted mx-auto mb-3"><i class="bi bi-hand-index-thumb"></i></div>
-                        <div class="fw-bold">@T("لم تُفتح لوحة بعد")</div>
-                        <div class="small text-muted">@T("اضغط على رقم في جدول الإحصائيات لتفتح بنود الجهة التي تنتظرك.")</div>
-                    </div>
-                }
-                else if (VisibleItems.Count == 0)
+                @if (VisibleItems.Count == 0)
                 {
                     <div class="text-center py-5">
                         <div class="zu-stat-icon rounded-4 bg-light text-muted mx-auto mb-3"><i class="bi bi-inboxes"></i></div>
                         <div class="fw-bold">@T("لا بنود في هذه الخانة")</div>
-                        <div class="small text-muted">@F("اضغط رقماً آخر في صف {0} أو افتح كل بنود الجهة.", T(SelectedStat.DepartmentName))</div>
+                        <div class="small text-muted">@T("اضغط كبسولة أخرى في شريط الفلترة أو اعرض كل بنود الجهة.")</div>
                     </div>
                 }
 
@@ -573,13 +1120,13 @@
                                                         </div>
                                                         <div>
                                                             <div class="zu-file-meta-label">@T("تاريخ الرفع")</div>
-                                                            <div class="zu-file-meta-value">@file.UploadedAt.ToString("yyyy/MM/dd HH:mm")</div>
+                                                            <div class="zu-file-meta-value">@file.UploadedAt.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture)</div>
                                                         </div>
                                                         @if (file.FinalOutcome != FinalOutcome.NotReviewed)
                                                         {
                                                             <div>
                                                                 <div class="zu-file-meta-label">@(file.FinalOutcome == FinalOutcome.Approved ? T("تاريخ الموافقة") : T("تاريخ الرفض"))</div>
-                                                                <div class="zu-file-meta-value">@(file.ReviewedAt?.ToString("yyyy/MM/dd HH:mm") ?? "—")</div>
+                                                                <div class="zu-file-meta-value">@(file.ReviewedAt?.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture) ?? "—")</div>
                                                             </div>
                                                         }
                                                     </div>
@@ -628,8 +1175,159 @@
                 </div>
             </div>
         </div>
+        }
     </div>
 </div>
+
+@* ===================== نافذة تقرير فحص التدقيق الداخلي =====================
+   الورقة داخلها هي نفسها ما يُطبع وما يُنزَّل: يقرأ السكربت هذا العنصر حيّاً فيحوّل حقوله إلى
+   نصّها المكتوب وينسخه، فلا يفارق ما رآه المدقّق ما خرج من الطابعة أو نزل في ملف. *@
+@if (ReportStat is not null)
+{
+    <div class="zu-report-overlay" id="zu-report-overlay" tabindex="-1" dir="@Ui.Dir"
+         @onclick="CloseReportAsync" @onkeydown="OnReportKeyDownAsync">
+        <div class="zu-report-dialog" role="dialog" aria-modal="true" aria-label="@ReportDocumentTitle"
+             @onclick:stopPropagation="true">
+
+            <div class="zu-report-bar">
+                <div class="zu-report-bar-title">
+                    <i class="bi bi-file-earmark-text-fill text-primary"></i>
+                    <span>@ReportDocumentTitle</span>
+                </div>
+                <button type="button" class="btn btn-sm btn-primary rounded-3 d-inline-flex align-items-center gap-1"
+                        disabled="@ReportBusy" @onclick="PrintReportAsync">
+                    <i class="bi bi-printer-fill"></i> @T("طباعة / حفظ كـ PDF")
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-3 d-inline-flex align-items-center gap-1"
+                        disabled="@ReportBusy" @onclick='() => DownloadReportAsync("word")'>
+                    <i class="bi bi-file-earmark-word-fill"></i> @T("تنزيل Word")
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-3 d-inline-flex align-items-center gap-1"
+                        disabled="@ReportBusy" @onclick='() => DownloadReportAsync("html")'>
+                    <i class="bi bi-filetype-html"></i> @T("تنزيل HTML")
+                </button>
+                <button type="button" class="btn btn-sm btn-light border rounded-3 d-inline-flex align-items-center gap-1"
+                        @onclick="CloseReportAsync">
+                    <i class="bi bi-x-lg"></i> @T("إغلاق")
+                </button>
+            </div>
+
+            <div class="zu-report-scroll">
+                @if (ReportError is not null)
+                {
+                    <div class="alert alert-danger rounded-3 py-2 small mb-3" data-report-exclude>@ReportError</div>
+                }
+
+                @if (ReportBusy)
+                {
+                    <div class="text-center text-muted py-5" data-report-exclude>
+                        <span class="spinner-border spinner-border-sm text-primary"></span>
+                        <span class="ms-2">@T("جارٍ تجهيز بنود التقرير…")</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="zu-report-sheet" id="zu-report-sheet" dir="@Ui.Dir" lang="@Ui.Lang">
+                        <table class="zu-report-head">
+                            <tr>
+                                <td class="zu-report-logo-cell">
+                                    <img class="zu-report-logo" src="/images/zu-logo-report.png" alt="@T("شعار جامعة الزرقاء")" />
+                                </td>
+                                <td>
+                                    <div class="zu-report-org-ar">@T("جامعة الزرقاء")</div>
+                                    <div class="zu-report-org-en" dir="ltr">Zarqa University</div>
+                                    <div class="zu-report-org-unit">@T("وحدة التطوير وضمان الجودة")</div>
+                                </td>
+                                <td class="zu-report-doc-cell">
+                                    <div class="zu-report-doc-title">@T("تقرير فحص التدقيق الداخلي")</div>
+                                    <div class="zu-report-doc-std" dir="ltr">ISO 21001:2025</div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <table class="zu-report-meta">
+                            <tr>
+                                <th>@T("الجهة المدقق عليها")</th>
+                                <td dir="auto">@T(ReportStat.DepartmentName)</td>
+                                <th>@T("المعيار المرجعي")</th>
+                                <td dir="ltr">ISO 21001:2025</td>
+                            </tr>
+                            <tr>
+                                <th>@T("اسم المدقق")</th>
+                                <td dir="auto">@Person(ReviewerName)</td>
+                                <th>@T("التاريخ")</th>
+                                @* «/» في نمط التاريخ فاصلٌ يُبدَل بفاصل الثقافة، وفاصل العربية محشوٌّ بعلامة ‎U+200F‎
+                                   فتُقلَب الأرقام على الشاشة إلى «202614/11/». الثقافة الثابتة تُبقيه شرطةً مائلة صريحة. *@
+                                <td dir="ltr">@ReportDate.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)</td>
+                            </tr>
+                        </table>
+
+                        <table class="zu-report-tally">
+                            <tr>
+                                <td class="zu-report-tally-ok"><b dir="ltr">@CompliantCount</b>@T("مطابق")</td>
+                                <td class="zu-report-tally-bad"><b dir="ltr">@NonCompliantCount</b>@T("غير مطابق")</td>
+                                <td class="zu-report-tally-wip"><b dir="ltr">@PendingCount</b>@T("قيد الاستكمال")</td>
+                            </tr>
+                        </table>
+
+                        <div class="zu-report-table-wrap">
+                            <table class="zu-report-table">
+                                <thead>
+                                    <tr>
+                                        <th class="zu-report-col-num zu-report-num">#</th>
+                                        <th>@T("بند الفحص")</th>
+                                        <th class="zu-report-col-ok zu-report-mark">@T("مطابق")</th>
+                                        <th class="zu-report-col-bad zu-report-mark">@T("غير مطابق")</th>
+                                        <th class="zu-report-col-note">@T("حالة عدم المطابقة / الملاحظات")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in ReportRows)
+                                    {
+                                        <tr>
+                                            <td class="zu-report-num" dir="ltr">@row.Number</td>
+                                            <td>
+                                                @* عنوان البند كما ورد في الكتالوج حرفياً: لا تُعاد صياغته في وثيقة رسمية *@
+                                                <span class="zu-report-item-title" dir="auto">@T(row.Title)</span>
+                                                @if (!string.IsNullOrWhiteSpace(row.IsoReference))
+                                                {
+                                                    <span class="zu-report-item-iso" dir="ltr">@row.IsoReference</span>
+                                                }
+                                            </td>
+                                            <td class="zu-report-mark zu-report-mark-ok">@(row.State == ReviewState.Approved ? "✓" : "")</td>
+                                            <td class="zu-report-mark zu-report-mark-bad">@(row.State == ReviewState.Rejected ? "✓" : "")</td>
+                                            <td class="zu-report-note @NoteCss(row.State)" dir="auto">@row.Note</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <table class="zu-report-foot">
+                            <tr>
+                                <td>
+                                    <label class="zu-report-label" for="zu-report-summary">@T("الملخص")</label>
+                                    <textarea id="zu-report-summary" class="zu-report-input" rows="3"
+                                              @bind="ReportSummary" @bind:event="oninput"></textarea>
+                                </td>
+                                <td class="zu-report-sign-cell">
+                                    <label class="zu-report-label" for="zu-report-signature">@T("التوقيع")</label>
+                                    <input id="zu-report-signature" class="zu-report-input zu-report-sign-input"
+                                           @bind="ReportSignature" @bind:event="oninput" />
+                                    <div class="zu-report-sign-rule">@T("توقيع رئيس وحدة التطوير وضمان الجودة")</div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div class="zu-report-stamp">
+                            @F("صدر آلياً من نظام ZU-AuditIntel في {0} — عدد البنود {1}", ReportDate.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture), ReportRows.Count)
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     /// <summary>عتبة الوكيل: ما دونها لا يصل إلى رئيس وحدة التطوير وضمان الجودة أصلاً.</summary>
@@ -638,7 +1336,7 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
 
-    /// <summary>الجهات المعروضة في الجدول: كلها، أو ما طابق خانة البحث باسم جهة أو بند أو رمز آيزو.</summary>
+    /// <summary>الجهات المعروضة في الشبكة: كلها، أو ما طابق خانة البحث باسم جهة أو بند أو رمز آيزو.</summary>
     private IReadOnlyList<DepartmentAuditStat> ShownStats
     {
         get
@@ -695,6 +1393,29 @@
     private string? Message;
     private string MessageClass = "alert-success";
 
+    // ===== تقرير فحص التدقيق الداخلي =====
+    private DepartmentAuditStat? ReportStat;
+    private IReadOnlyList<ReportRow> ReportRows = [];
+    private bool ReportBusy;
+    private string? ReportError;
+    private DateTime ReportDate;
+    private string ReportSummary = string.Empty;
+    private string ReportSignature = string.Empty;
+
+    /// <summary>البؤرة تُنقل إلى النافذة بعد أول رسم لها، فـ Escape يعمل من أول لحظة.</summary>
+    private bool ReportFocusPending;
+
+    /// <summary>سطر واحد في جدول التقرير: البند كما ورد في الكتالوج، وحالته، وما يُكتب في الملاحظات.</summary>
+    private sealed record ReportRow(int Number, string Title, string IsoReference, ReviewState State, string Note);
+
+    private int CompliantCount => ReportRows.Count(row => row.State == ReviewState.Approved);
+    private int NonCompliantCount => ReportRows.Count(row => row.State == ReviewState.Rejected);
+    private int PendingCount => ReportRows.Count - CompliantCount - NonCompliantCount;
+
+    private string ReportDocumentTitle => ReportStat is null
+        ? T("تقرير فحص التدقيق الداخلي")
+        : F("تقرير فحص التدقيق الداخلي — {0}", T(ReportStat.DepartmentName));
+
     /// <summary>
     /// أرقام الرأس تبقى أرقام الجامعة كلها ولو ضيّق البحث الجدول: العنوان يقول «اعتماد بنود الجامعة»،
     /// فلا تنقص نسبته لأن كلمة بحثٍ ضيّقت ما يُعرض تحته.
@@ -706,16 +1427,21 @@
     private int TotalAwaitingItems => TotalsStats.Sum(s => s.ItemsAwaitingReview);
     private int ClosedPercent => TotalItems == 0 ? 0 : (int)Math.Round(TotalClosed * 100.0 / TotalItems);
 
-    private string PanelTitle => SelectedStat is null
-        ? T("لوحة البنود")
-        : SelectedMetric switch
-        {
-            StatColumn.AllItems => F("بنود {0} كلها", T(SelectedStat.DepartmentName)),
-            StatColumn.Uploaded => F("بنود {0} التي وصلك منها ملف مجاز", T(SelectedStat.DepartmentName)),
-            StatColumn.AwaitingReview => F("بنود {0} التي تنتظر تدقيقك", T(SelectedStat.DepartmentName)),
-            StatColumn.Rejected => F("بنود {0} التي رفضتها بعد إجازة الوكيل", T(SelectedStat.DepartmentName)),
-            _ => F("بنود {0} المعتمدة نهائياً", T(SelectedStat.DepartmentName))
-        };
+    /// <summary>كبسولة الفلترة: المختارة سطحٌ داكن، والباقي أبيض، كما في لوحة الجهة سواءً بسواء.</summary>
+    private string PillClass(StatColumn metric) =>
+        SelectedMetric == metric ? "zu-filter-pill active" : "zu-filter-pill";
+
+    private string AriaPressed(StatColumn metric) => SelectedMetric == metric ? "true" : "false";
+
+    /// <summary>لون شارة العدّاد وحده يحمل الحالة، فلا نقطة ملوّنة داخل الكبسولة تزاحم النص.</summary>
+    private static string CountClass(StatColumn metric) => metric switch
+    {
+        StatColumn.Uploaded => "zu-count-blue",
+        StatColumn.AwaitingReview => "zu-count-amber",
+        StatColumn.Rejected => "zu-count-red",
+        StatColumn.Approved => "zu-count-green",
+        _ => "zu-count-all"
+    };
 
     private IReadOnlyList<ReviewItemRow> VisibleItems => SelectedStat is null || PinnedItemIds is null
         ? []
@@ -730,7 +1456,7 @@
         _ => row => true
     };
 
-    /// <summary>خانات جدول الإحصائيات، وهي ترتيب الأرقام نفسه على الشاشة: أربع حالات لا خمس.</summary>
+    /// <summary>خانات أسفل البطاقة، وهي ترتيب المؤشرات نفسه على الشاشة: أربع حالات لا خمس.</summary>
     private enum StatColumn
     {
         AllItems,
@@ -740,19 +1466,37 @@
         Approved
     }
 
-    private sealed record StatCell(StatColumn Metric, int Count, string BadgeClass, string Hint);
+    private sealed record StatCell(StatColumn Metric, int Count, string CssClass, string Label, string Hint);
 
+    /// <summary>
+    /// المؤشرات الأربعة في أسفل البطاقة. الخانة الفارغة رمادية باهتة لا بلون حالتها: فالصفر ليس
+    /// خبراً، والعين تلتقط ما فيه عددٌ فقط. وعدد البنود كله شارةٌ في رأس البطاقة لا خانة هنا.
+    /// </summary>
     private static IReadOnlyList<StatCell> CellsFor(DepartmentAuditStat stat) =>
     [
-        new(StatColumn.AllItems, stat.TotalItems, "bg-primary-subtle text-primary-emphasis border border-primary-subtle", "كل بنود هذه الجهة"),
-        new(StatColumn.Uploaded, stat.ItemsUploaded, "bg-info-subtle text-info-emphasis border border-info-subtle", "بنود وصلك منها ملف أجازَه الوكيل"),
-        new(StatColumn.AwaitingReview, stat.ItemsAwaitingReview, "bg-primary text-white", "بنود مجازة لم توقّع عليها بعد"),
-        new(StatColumn.Rejected, stat.ItemsRejected, "bg-danger-subtle text-danger-emphasis border border-danger-subtle", "بنود رفضتها بعد أن أجازها الوكيل، فعادت للجهة"),
-        new(StatColumn.Approved, stat.ItemsApproved, "bg-success-subtle text-success-emphasis border border-success-subtle", "بنود وقّعت كل ملفاتها المجازة")
+        Cell(StatColumn.Uploaded, stat.ItemsUploaded, "zu-cell-sky", "مرفوعة", "بنود وصلك منها ملف أجازَه الوكيل"),
+        Cell(StatColumn.AwaitingReview, stat.ItemsAwaitingReview, "zu-cell-amber", "بانتظار التدقيق", "بنود مجازة لم توقّع عليها بعد"),
+        Cell(StatColumn.Rejected, stat.ItemsRejected, "zu-cell-red", "مرفوضة", "بنود رفضتها بعد أن أجازها الوكيل، فعادت للجهة"),
+        Cell(StatColumn.Approved, stat.ItemsApproved, "zu-cell-green", "معتمدة", "بنود وقّعت كل ملفاتها المجازة")
     ];
 
-    private bool IsActive(DepartmentAuditStat stat, StatColumn metric) =>
-        SelectedStat?.DepartmentId == stat.DepartmentId && SelectedMetric == metric;
+    private static StatCell Cell(StatColumn metric, int count, string cssClass, string label, string hint) =>
+        new(metric, count, count > 0 ? cssClass : "zu-cell-zero", label, hint);
+
+    /// <summary>لون شريط الإنجاز: رمادي عند الصفر، أزرق في الطريق، أخضر عند 70% فما فوق.</summary>
+    private static string ProgressLevel(int percent) => percent switch
+    {
+        0 => "zero",
+        >= 70 => "high",
+        _ => "mid"
+    };
+
+    /// <summary>البطاقة زرٌّ بلوحة المفاتيح أيضاً: Enter وSpace يفتحان بنودها كما تفتحها الضغطة.</summary>
+    private async Task OnCardKeyDownAsync(KeyboardEventArgs args, DepartmentAuditStat stat)
+    {
+        if (args.Key is "Enter" or " " or "Spacebar")
+            await SelectStatAsync(stat, StatColumn.AllItems);
+    }
 
     /// <summary>
     /// البحث يطابق الجهة باسمها كما يُعرض، أو ببندٍ من بنودها: عنوانه كما يُعرض، أو رمز آيزو،
@@ -875,8 +1619,37 @@
         ItemIndex = await Catalog.GetItemIndexAsync();
     }
 
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+    /// <summary>
+    /// رابط «الصفحة الرئيسية» في الشريط يشير إلى ‎/review‎ نفسها، والعنوان لا يتغيّر فلا تُعاد
+    /// تهيئة المكوّن. نسمع للتنقّل بأنفسنا: من ضغطه وجهةٌ مفتوحة عاد إلى الشبكة كما يعود من المسار.
+    /// </summary>
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        if (SelectedStat is null)
+            return;
+
+        if (!Navigation.ToBaseRelativePath(args.Location).TrimEnd('/').Equals("review", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // الحدث حدثُ .NET عاديّ لا معالجُ @onclick، فبلazor لا يعيد الرسم بعده تلقائياً:
+        // بلا StateHasChanged تصفرّ الحالة في الخفاء وتبقى واجهة الجهة على الشاشة.
+        _ = InvokeAsync(async () =>
+        {
+            await BackToGridAsync();
+            StateHasChanged();
+        });
+    }
+
     private async Task SelectStatAsync(DepartmentAuditStat stat, StatColumn metric)
     {
+        // الدخول إلى جهة يستبدل الشاشة كلها، فتُعاد النافذة إلى أعلاها. أما تبديل الكبسولة
+        // والجهة نفسها مفتوحة فلا يقفز بالصفحة: المدقّق واقف عند الشريط ويرى النتيجة تحته.
+        var entering = SelectedStat?.DepartmentId != stat.DepartmentId;
+
         SelectedStat = stat;
         SelectedMetric = metric;
         ExpandedItem = null;
@@ -891,6 +1664,25 @@
 
         // الرقم يلتقط قائمة بنوده لحظة الضغط، فتبقى أمام المدقّق بحالتها المتجددة بدل أن تختفي وهو يوقّعها.
         PinnedItemIds = Items.Where(Matches(metric)).Select(row => row.AuditItemId).ToHashSet();
+
+        if (entering)
+            await JS.InvokeVoidAsync("zuScrollToTop");
+    }
+
+    /// <summary>العودة إلى الشبكة تُغلق التقرير إن كان مفتوحاً، فلا يبقى غطاؤه فوق البطاقات العائدة.</summary>
+    private async Task BackToGridAsync()
+    {
+        SelectedStat = null;
+        SelectedMetric = StatColumn.AllItems;
+        PinnedItemIds = null;
+        ExpandedItem = null;
+        ExpandedFile = null;
+        Message = null;
+
+        if (ReportStat is not null)
+            await CloseReportAsync();
+
+        await JS.InvokeVoidAsync("zuScrollToTop");
     }
 
     private void ToggleItem(int auditItemId) =>
@@ -909,7 +1701,156 @@
             Items = (await Store.GetReviewBoardAsync(SelectedStat.DepartmentId)).ToList();
             LoadedDepartmentId = SelectedStat.DepartmentId;
         }
+
+        // التقرير مفتوح على الجهة نفسها: يُعاد بناء سطورها من القراءة الجديدة، فلا يطبع المدقّق
+        // ورقةً سابقةً لتوقيعٍ وقّعه الآن. والملخص الذي كتبه بيده لا يُمسّ.
+        if (ReportStat is not null && ReportStat.DepartmentId == LoadedDepartmentId)
+        {
+            ReportStat = Stats.FirstOrDefault(s => s.DepartmentId == ReportStat.DepartmentId) ?? ReportStat;
+            ReportRows = BuildReportRows(Items);
+        }
     }
+
+    // ===================== تقرير فحص التدقيق الداخلي =====================
+
+    /// <summary>
+    /// يفتح التقرير على بنود الجهة كما هي في القاعدة: كل بنودها بترتيب لوحتها، لا ما رُفع منها فقط.
+    /// والقراءة تُعاد إن لم تكن لوحة هذه الجهة محمّلة، فلا تُبنى وثيقة رسمية على بنود جهة أخرى.
+    /// </summary>
+    private async Task OpenReportAsync(DepartmentAuditStat stat)
+    {
+        ReportStat = stat;
+        ReportBusy = true;
+        ReportError = null;
+        ReportRows = [];
+        ReportDate = DateTime.Now;
+        ReportSignature = Person(ReviewerName);
+        ReportFocusPending = true;
+
+        try
+        {
+            var items = LoadedDepartmentId == stat.DepartmentId
+                ? Items
+                : (await Store.GetReviewBoardAsync(stat.DepartmentId)).ToList();
+
+            ReportRows = BuildReportRows(items);
+            ReportSummary = DefaultSummary(stat);
+        }
+        catch (FirestoreUnavailableException)
+        {
+            ReportError = T("تعذّر تحميل بنود هذه الجهة الآن، فأغلق النافذة وحاول مرة أخرى.");
+        }
+        finally
+        {
+            ReportBusy = false;
+        }
+    }
+
+    private async Task CloseReportAsync()
+    {
+        ReportStat = null;
+        ReportRows = [];
+        ReportError = null;
+        await JS.InvokeVoidAsync("zuOverlay", "zu-report-overlay", false);
+    }
+
+    private async Task OnReportKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+            await CloseReportAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!ReportFocusPending || ReportStat is null)
+            return;
+
+        ReportFocusPending = false;
+        await JS.InvokeVoidAsync("zuOverlay", "zu-report-overlay", true);
+    }
+
+    private async Task PrintReportAsync()
+    {
+        ReportError = null;
+        if (!await JS.InvokeAsync<bool>("zuPrintReport", "zu-report-sheet"))
+            ReportError = T("تعذّر تجهيز التقرير للطباعة، أعد فتح النافذة وحاول مرة أخرى.");
+    }
+
+    private async Task DownloadReportAsync(string format)
+    {
+        ReportError = null;
+        var fileName = $"{ReportFileStem(ReportStat!)}.{(format == "word" ? "doc" : "html")}";
+        if (!await JS.InvokeAsync<bool>("zuDownloadReport", "zu-report-sheet", fileName, format, ReportDocumentTitle))
+            ReportError = T("تعذّر تنزيل التقرير، أعد فتح النافذة وحاول مرة أخرى.");
+    }
+
+    /// <summary>اسم الملف من معرّف الجهة اللاتيني وتاريخ اليوم: لا مسافات ولا حروف تُتعب نظام الملفات.</summary>
+    private static string ReportFileStem(DepartmentAuditStat stat)
+    {
+        var slug = new string(stat.DepartmentId
+            .Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')
+            .ToArray());
+
+        return $"Internal-Audit-Report-{(slug.Length == 0 ? "entity" : slug)}-{DateTime.Now:yyyy-MM-dd}";
+    }
+
+    private static IReadOnlyList<ReportRow> BuildReportRows(IReadOnlyList<ReviewItemRow> items) =>
+        items.Select(item => new ReportRow(
+            item.ItemNumber,
+            item.Title,
+            item.IsoReference,
+            item.State,
+            NoteFor(item))).ToList();
+
+    /// <summary>
+    /// عمود الملاحظات: المعتمد يُؤرَّخ باعتماده، والمرفوض يحمل سبب رفضه كما سُجّل على ملفاته،
+    /// وما زال في الطريق يقول ذلك صراحةً بدل خانة فارغة لا تُفهم في وثيقة رسمية.
+    /// </summary>
+    private static string NoteFor(ReviewItemRow item)
+    {
+        switch (item.State)
+        {
+            case ReviewState.Approved:
+                var approvedAt = item.Files
+                    .Where(f => f.FinalOutcome == FinalOutcome.Approved && f.ReviewedAt is not null)
+                    .Select(f => f.ReviewedAt!.Value)
+                    .DefaultIfEmpty()
+                    .Max();
+
+                return approvedAt == default
+                    ? T("معتمد نهائي")
+                    : F("اعتُمد نهائياً بتاريخ {0}", approvedAt.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture));
+
+            case ReviewState.Rejected:
+                var reasons = item.Files
+                    .Where(f => f.FinalOutcome == FinalOutcome.Rejected && !string.IsNullOrWhiteSpace(f.FinalNote))
+                    .Select(f => f.FinalNote!.Trim())
+                    .Distinct()
+                    .ToList();
+
+                return reasons.Count > 0
+                    ? string.Join('\n', reasons)
+                    : T("رُفض البند ولم تُسجّل ملاحظة على ملفاته.");
+
+            case ReviewState.AwaitingReview:
+                return T("بانتظار التدقيق");
+
+            default:
+                return T("قيد الاستكمال — لم يصل دليل معتمد بعد");
+        }
+    }
+
+    private static string NoteCss(ReviewState state) => state switch
+    {
+        ReviewState.Rejected => "zu-report-note-bad",
+        ReviewState.Approved => "",
+        _ => "zu-report-note-wip"
+    };
+
+    /// <summary>ملخص مبدئي بأعداد اليوم: يكتبه النظام للمدقّق ثم يعدّله بيده قبل الطبع والتوقيع.</summary>
+    private string DefaultSummary(DepartmentAuditStat stat) => F(
+        "فُحصت بنود {0} البالغة {1} بنداً وفق المعيار المرجعي ISO 21001:2025: {2} بنداً مطابقاً معتمداً نهائياً، و{3} بنداً غير مطابق أُعيد إلى الجهة لإجراء تصحيحي، و{4} بنداً ما زال قيد الاستكمال أو بانتظار التدقيق.",
+        T(stat.DepartmentName), ReportRows.Count, CompliantCount, NonCompliantCount, PendingCount);
 
     private async Task ApproveAsync(string submissionId)
     {

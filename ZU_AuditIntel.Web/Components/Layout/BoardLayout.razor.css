@@ -217,3 +217,78 @@ html.zu-side-collapsed .zu-board-side .zu-side-badge {
     padding: 0 5px;
     font-size: .62rem;
 }
+
+/* عناصر الدرج الثلاثة لا وجود لها على سطح المكتب: الشريط هناك عمودٌ ظاهر لا يُفتح ولا يُغلق. */
+.zu-drawer-open-btn,
+.zu-drawer-scrim,
+.zu-drawer-close-ico {
+    display: none;
+}
+
+/* الجوال: عمودٌ بعرض 260px على شاشة 390px لا يترك للمحتوى إلا 74px فيفيض أفقياً. فالشريط يصير
+   درجاً منزلقاً خارج الشاشة، والمحتوى يأخذ العرض كله. القواعد بعد قواعد الطيّ لتغلبها بالترتيب.
+   والانزلاق إلى اليمين في اللغتين معاً لأن الشريط مثبَّت على الحافة اليمنى الفعلية لا على بدايتها. */
+@media (max-width: 576px) {
+    .zu-board-shell,
+    html.zu-side-collapsed .zu-board-shell {
+        padding-right: 1rem;
+        /* مكان زر الفتح الثابت، فلا يقع فوق أول سطر من محتوى الصفحة. */
+        padding-top: 62px;
+    }
+
+    .zu-board-side,
+    html.zu-side-collapsed .zu-board-side {
+        width: min(280px, 86vw);
+        transform: translateX(100%);
+        visibility: hidden;
+        transition: transform .22s ease, visibility 0s linear .22s;
+        /* تمرير الدرج لا ينتقل إلى الصفحة تحته عند بلوغ آخره. */
+        overscroll-behavior: contain;
+    }
+
+    html.zu-drawer-open .zu-board-side {
+        transform: translateX(0);
+        visibility: visible;
+        transition: transform .22s ease, visibility 0s;
+        box-shadow: -14px 0 34px rgba(15, 23, 42, .22);
+    }
+
+    .zu-drawer-open-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        left: auto;
+        z-index: 1028;
+    }
+
+    .zu-drawer-scrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 1029;
+        background: rgba(2, 6, 23, .5);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity .22s ease, visibility 0s linear .22s;
+        /* التعتيم يبتلع اللمس فلا تُمرَّر الصفحة خلف الدرج وهي ساكنة. */
+        touch-action: none;
+    }
+
+    html.zu-drawer-open .zu-drawer-scrim {
+        opacity: 1;
+        visibility: visible;
+        transition: opacity .22s ease, visibility 0s;
+    }
+
+    /* زر الشريط نفسه يصير زر إغلاق: علامة الإغلاق بدل قائمة الطيّ. */
+    .zu-board-side .zu-drawer-list-ico {
+        display: none;
+    }
+
+    .zu-drawer-close-ico {
+        display: inline-block;
+    }
+}

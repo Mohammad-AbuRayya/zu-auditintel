@@ -8,9 +8,16 @@
 @inject NavigationManager Navigation
 
 <div dir="@Ui.Dir" class="zu-board-shell">
+    @* زر فتح الدرج على الجوال: خارج الشريط لأن الشريط نفسه يسكن خارج الشاشة، فلو سكن فيه لما بقي ما يفتحه. *@
+    <button type="button" class="zu-side-toggle zu-drawer-open-btn" onclick="zuToggleSide()" title="@T("طيّ الشريط الجانبي أو فتحه")">
+        <i class="bi bi-list"></i>
+    </button>
+
+    <div class="zu-drawer-scrim" onclick="zuCloseDrawer()"></div>
+
     <aside class="zu-board-side">
         <button type="button" class="zu-side-toggle" onclick="zuToggleSide()" title="@T("طيّ الشريط الجانبي أو فتحه")">
-            <i class="bi bi-list"></i>
+            <i class="bi bi-list zu-drawer-list-ico"></i><i class="bi bi-x-lg zu-drawer-close-ico"></i>
         </button>
 
         <UserBar />

@@ -82,7 +82,8 @@ html[data-bs-theme="dark"] .zu-side-toggle {
     border-color: #26334a;
 }
 
-html[data-bs-theme="dark"] .zu-side-item {
+html[data-bs-theme="dark"] .zu-side-item,
+html[data-bs-theme="dark"] .zu-side-toggle {
     color: #c7d3e3;
 }
 
@@ -296,7 +297,7 @@ html[data-bs-theme="dark"] .zu-board-icon {
     color: #7ab3ff;
 }
 
-/* شاشة التدقيق النهائي: سطور الملفات وأسماء الجهات في جدول الإحصائيات */
+/* شاشة التدقيق النهائي: سطور الملفات وشبكة بطاقات الجهات */
 html[data-bs-theme="dark"] .zu-review-page {
     background-color: #0f1523;
 }
@@ -306,9 +307,222 @@ html[data-bs-theme="dark"] .zu-file-row {
     border-color: #26334a;
 }
 
-html[data-bs-theme="dark"] .zu-dept-link {
+html[data-bs-theme="dark"] .zu-stats-search .zu-search-icon {
+    color: #8496ad;
+}
+
+html[data-bs-theme="dark"] .zu-stats-search input {
+    background-color: #17202f;
+    border-color: #2b3a52;
+    color: #e6edf6;
+}
+
+    html[data-bs-theme="dark"] .zu-stats-search input::placeholder {
+        color: #7b8ca3;
+    }
+
+    html[data-bs-theme="dark"] .zu-stats-search input:focus {
+        border-color: #3d6ea8;
+        box-shadow: 0 0 0 3px rgba(122, 179, 255, .18);
+    }
+
+html[data-bs-theme="dark"] .zu-stats-count {
+    background-color: #1b2a44;
+    border-color: #2f4468;
     color: #7ab3ff;
 }
+
+html[data-bs-theme="dark"] .zu-dept-card {
+    background: #17202f;
+    border-color: #26334a;
+}
+
+    html[data-bs-theme="dark"] .zu-dept-card:hover {
+        border-color: #3a4a63;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, .45);
+    }
+
+    html[data-bs-theme="dark"] .zu-dept-card:focus-visible {
+        border-color: #3d6ea8;
+        box-shadow: 0 0 0 3px rgba(122, 179, 255, .25);
+    }
+
+html[data-bs-theme="dark"] .zu-dept-name {
+    color: #e6edf6;
+}
+
+html[data-bs-theme="dark"] .zu-dept-total {
+    background: #1b2a44;
+    border-color: #2f4468;
+    color: #7ab3ff;
+}
+
+html[data-bs-theme="dark"] .zu-dept-progress-label {
+    color: #8496ad;
+}
+
+html[data-bs-theme="dark"] .zu-dept-track {
+    background: #223049;
+}
+
+html[data-bs-theme="dark"] .zu-dept-fill.zero {
+    background: #465872;
+}
+
+html[data-bs-theme="dark"] .zu-dept-fill.mid {
+    background: #4d9bff;
+}
+
+html[data-bs-theme="dark"] .zu-dept-fill.high {
+    background: #3dd68c;
+}
+
+html[data-bs-theme="dark"] .zu-dept-progress-value.zero {
+    color: #7b8ca3;
+}
+
+html[data-bs-theme="dark"] .zu-dept-progress-value.mid {
+    color: #7ab3ff;
+}
+
+html[data-bs-theme="dark"] .zu-dept-progress-value.high {
+    color: #3dd68c;
+}
+
+/* المؤشرات الخمسة: الخانة الصفرية تبقى أبرد سطح في البطاقة، وحالاتها تُقرأ بألوان الليل نفسها. */
+html[data-bs-theme="dark"] .zu-cell-zero {
+    background: #131c2b;
+    border-color: #223049;
+    color: #6f819a;
+}
+
+html[data-bs-theme="dark"] .zu-cell-sky {
+    background: #10283a;
+    border-color: #1d3f57;
+    color: #7cc7f5;
+}
+
+html[data-bs-theme="dark"] .zu-cell-amber {
+    background: #33260c;
+    border-color: #4d3a13;
+    color: #f2c14e;
+}
+
+html[data-bs-theme="dark"] .zu-cell-red {
+    background: #35161a;
+    border-color: #522229;
+    color: #ff8b95;
+}
+
+html[data-bs-theme="dark"] .zu-cell-green {
+    background: #102b1e;
+    border-color: #1c4531;
+    color: #6ee7b7;
+}
+
+html[data-bs-theme="dark"] .zu-cell-report {
+    background: #3b34a8;
+    border-color: #4c44c4;
+    color: #fff;
+}
+
+    html[data-bs-theme="dark"] .zu-cell-report:hover:not(:disabled) {
+        background: #4a41cc;
+        border-color: #5b52dd;
+    }
+
+html[data-bs-theme="dark"] .zu-dept-cell:hover:not(:disabled) {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .45);
+}
+
+/* واجهة الجهة المفتوحة: المسار وبطاقة الملخص يقلبان مع الموقع، ويبقى الرابط أزرقَ مقروءاً
+   على السطح الداكن لا الأزرق النهاري الغامق الذي يضيع فيه. */
+html[data-bs-theme="dark"] .zu-crumb-link {
+    color: #7ab3ff;
+}
+
+    html[data-bs-theme="dark"] .zu-crumb-link:hover {
+        color: #a8ceff;
+    }
+
+    html[data-bs-theme="dark"] .zu-crumb-link:focus-visible {
+        box-shadow: 0 0 0 3px rgba(122, 179, 255, .28);
+    }
+
+html[data-bs-theme="dark"] .zu-crumb-sep {
+    color: #6f819a;
+}
+
+html[data-bs-theme="dark"] .zu-crumb-current {
+    color: #e6edf6;
+}
+
+html[data-bs-theme="dark"] .zu-dept-summary {
+    background: #17202f;
+    border-color: #26334a;
+}
+
+html[data-bs-theme="dark"] .zu-summary-name {
+    color: #e6edf6;
+}
+
+html[data-bs-theme="dark"] .zu-summary-iso {
+    background: #131c2b;
+    border-color: #2b3a52;
+    color: #a9b8cc;
+}
+
+html[data-bs-theme="dark"] .zu-summary-report {
+    background: #3b34a8;
+    border-color: #4c44c4;
+}
+
+    html[data-bs-theme="dark"] .zu-summary-report:hover {
+        background: #4a41cc;
+        border-color: #5b52dd;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, .5);
+    }
+
+    html[data-bs-theme="dark"] .zu-summary-report:focus-visible {
+        box-shadow: 0 0 0 3px rgba(122, 179, 255, .3);
+    }
+
+/* هيكل نافذة التقرير يقلب مع الموقع، أما الورقة نفسها فتبقى بيضاء: فهي المستند الرسمي كما يُطبع. */
+html[data-bs-theme="dark"] .zu-report-overlay {
+    background: rgba(3, 7, 18, .72);
+}
+
+html[data-bs-theme="dark"] .zu-report-dialog {
+    background: #131c2b;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+
+html[data-bs-theme="dark"] .zu-report-bar {
+    background: #17202f;
+    border-bottom-color: #2b3a52;
+}
+
+html[data-bs-theme="dark"] .zu-report-bar-title {
+    color: #e6edf6;
+}
+
+html[data-bs-theme="dark"] .zu-report-scroll {
+    background: #0d1420;
+    scrollbar-color: #3a4a63 #0d1420;
+}
+
+    html[data-bs-theme="dark"] .zu-report-scroll::-webkit-scrollbar-track {
+        background: #0d1420;
+    }
+
+    html[data-bs-theme="dark"] .zu-report-scroll::-webkit-scrollbar-thumb {
+        background: #3a4a63;
+        border-color: #0d1420;
+    }
+
+        html[data-bs-theme="dark"] .zu-report-scroll::-webkit-scrollbar-thumb:hover {
+            background: #4d6183;
+        }
 
 /* شاشة النتيجة النهائية: خلفية الصفحة وسطر البند المفتوح ورمز البند */
 html[data-bs-theme="dark"] .zu-reg-page {
@@ -364,6 +578,36 @@ html[data-bs-theme="dark"] .zu-item-row.zu-notuploaded {
 
 html[data-bs-theme="dark"] .zu-item-head:hover:not(:disabled) {
     background-color: rgba(122, 179, 255, .08);
+}
+
+/* كبسولات الفلترة في الليل: سطحٌ داكن وحدّ خفيف، والنشطة تبقى ‎#1e293b‎ لكن بحدّ أفتح وتوهّج
+   خفيف لتميّز عن سطح البطاقة. شارات العدّاد تقلب مع متغيّرات بوتستراب وحدها إلا «الكل». */
+html[data-bs-theme="dark"] .zu-filter-pill {
+    background-color: #17202f;
+    border-color: #2b3a52;
+    color: #dbe4f0;
+}
+
+    html[data-bs-theme="dark"] .zu-filter-pill:hover {
+        background-color: #1d283a;
+        border-color: #3a4a63;
+    }
+
+    html[data-bs-theme="dark"] .zu-filter-pill.active {
+        background-color: #1e293b;
+        border-color: #64748b;
+        color: #fff;
+        box-shadow: 0 0 0 1px rgba(100, 116, 139, .35), 0 4px 14px rgba(0, 0, 0, .5);
+    }
+
+        html[data-bs-theme="dark"] .zu-filter-pill.active:hover {
+            background-color: #243449;
+            border-color: #7c8ba1;
+        }
+
+html[data-bs-theme="dark"] .zu-count-all {
+    background-color: #2b3a52;
+    color: #cbd5e1;
 }
 
 html[data-bs-theme="dark"] .zu-item-iso {

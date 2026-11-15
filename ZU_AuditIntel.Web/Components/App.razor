@@ -20,6 +20,8 @@
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["ZU_AuditIntel.Web.styles.css"]" />
     <link rel="stylesheet" href="@Assets["zu-dark.css"]" />
+    @* ورقة التقرير الرسمي: تُقرأ هنا وتُنسخ حرفياً في ملف Word/HTML المنزَّل، فشكلٌ واحد للثلاثة. *@
+    <link rel="stylesheet" href="@Assets["css/audit-report.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet />
@@ -31,7 +33,80 @@
     </CascadingAuthenticationState>
     <ReconnectModal />
     <script src="@Assets["js/audit-shell.js"]"></script>
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["_framework/blazor.web.js"]" autostart="false"></script>
+    <script>
+        // نبضة النشاط وإعادة التحميل الصامتة: تُبقي جهاز Fly.io مستيقظاً ما دام تبويبٌ مفتوحاً
+        // يرسل /ping دورياً، وتعيد تحميل الصفحة وحدها إذا نام السيرفر (نوم اللابتوب أو توقّف
+        // الجهاز عند الخمول) حتى لا تعلق الشاشة أبداً. الإيقاف التلقائي في fly.toml يبقى مفعّلاً
+        // فينام الجهاز وحده بعد إغلاق كل التبويبات وتوقّف النبضات.
+        (function () {
+            var PING_MS = 180000; // ثلاث دقائق بين نبضتين
+            var RELOAD_GRACE_MS = 10000; // مهلة قبل إعادة التحميل عند سقوط الدارة
+            var down = false;
+            var reloadTimer = null;
+
+            function ping() {
+                try { fetch('/ping', { cache: 'no-store', keepalive: true }).catch(function () { }); } catch (e) { }
+            }
+
+            function autoReload() {
+                // حارس ضد حلقة إعادة تحميلٍ متلاصقة إن كان السيرفر مطفأً فعلاً لا نائماً.
+                var last = 0;
+                try { last = parseInt(sessionStorage.getItem('zu-last-reload') || '0', 10) || 0; } catch (e) { }
+                if (Date.now() - last < 4000) return;
+                try { sessionStorage.setItem('zu-last-reload', String(Date.now())); } catch (e) { }
+                location.reload();
+            }
+
+            function armReload() {
+                if (reloadTimer) clearTimeout(reloadTimer);
+                reloadTimer = setTimeout(function () { if (down) autoReload(); }, RELOAD_GRACE_MS);
+            }
+
+            function disarmReload() {
+                if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+            }
+
+            // نبضة أولى عند الفتح ثم دورية ما دامت الصفحة مفتوحة.
+            ping();
+            setInterval(ping, PING_MS);
+
+            // عودة التبويب إلى الواجهة: نبضة فورية توقظ الجهاز، وإعادة تحميل إن كانت الدارة ساقطة.
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') {
+                    ping();
+                    if (down) autoReload();
+                }
+            });
+
+            // استرجاع الصفحة من ذاكرة المتصفح (bfcache): نبضة فورية.
+            window.addEventListener('pageshow', function (e) { if (e.persisted) ping(); });
+
+            // بدء Blazor يدوياً بغلافٍ حول معالج إعادة الاتصال الافتراضي: تبقى نافذة إعادة الاتصال
+            // كما هي، ونضيف فوقها إعادة تحميل صامتة إن لم تعد الدارة خلال المهلة. والمعالج الافتراضي
+            // يُلتقط لحظة الحدث لا عند البدء، فهو يُهيّأ مع الدارة التفاعلية بعد إقلاع Blazor.
+            // معالج إعادة الاتصال خيارٌ تحت فرع circuit في Blazor.start (خيارات الدارة): فما يقرؤه
+            // blazor.web.js هو e.circuit.reconnectionHandler، لا المستوى الأعلى ولا فرع reconnection.
+            Blazor.start({
+                circuit: {
+                    reconnectionHandler: {
+                        onConnectionDown: function (options, error) {
+                            var def = Blazor.defaultReconnectionHandler;
+                            if (def && def.onConnectionDown) def.onConnectionDown(options, error);
+                            down = true;
+                            armReload();
+                        },
+                        onConnectionUp: function () {
+                            var def = Blazor.defaultReconnectionHandler;
+                            if (def && def.onConnectionUp) def.onConnectionUp();
+                            down = false;
+                            disarmReload();
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
 </body>
 
 </html>

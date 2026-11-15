@@ -44,21 +44,6 @@
         min-width: 220px;
     }
 
-    .zu-item-filters {
-        margin-inline-start: auto;
-    }
-
-    /* الأصفر على الأبيض لا يُقرأ، فيُستعمل له نصّه الغامق وخلفيّته الفاتحة من متغيّرات بوتستراب. */
-    .zu-item-filters .btn-outline-warning {
-        color: var(--bs-warning-text-emphasis);
-        border-color: var(--bs-warning-border-subtle);
-    }
-
-        .zu-item-filters .btn-outline-warning:hover {
-            background-color: var(--bs-warning-bg-subtle);
-            color: var(--bs-warning-text-emphasis);
-        }
-
     .zu-dropzone {
         position: relative;
         border: 2px dashed #9ec5fe;
@@ -516,35 +501,47 @@
                         <input type="search" class="form-control border" @bind="ItemQuery" @bind:event="oninput"
                                placeholder="@T("ابحث عن بند بالاسم أو الرقم")" aria-label="@T("ابحث عن بند بالاسم أو الرقم")" />
                     </div>
-                    <div class="btn-group flex-wrap rounded-3 zu-item-filters" role="group" aria-label="@T("فلترة البنود")" dir="@Ui.Dir">
-                        <button type="button" class="@(FilterButton(ItemFilter.All, "dark"))"
-                                @onclick="() => ActiveFilter = ItemFilter.All">
-                            @T("الكل") (@AuditItems.Count)
+                    <div class="zu-item-filters" role="group" aria-label="@T("فلترة البنود")" dir="@Ui.Dir">
+                        <button type="button" class="@FilterPill(ItemFilter.All)"
+                                @onclick="() => ActiveFilter = ItemFilter.All"
+                                aria-pressed="@(ActiveFilter == ItemFilter.All ? "true" : "false")">
+                            <span>@T("الكل")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-all" dir="ltr">@AuditItems.Count</span>
                         </button>
-                        <button type="button" class="@(FilterButton(ItemFilter.NotAudited, "secondary"))"
+                        <button type="button" class="@FilterPill(ItemFilter.NotAudited)"
                                 @onclick="() => ActiveFilter = ItemFilter.NotAudited"
+                                aria-pressed="@(ActiveFilter == ItemFilter.NotAudited ? "true" : "false")"
                                 title="@T("بنود لم يُرفع لها ملف بعد")">
-                            @T("لم يبدأ") (@NotAuditedCount)
+                            <span>@T("لم يبدأ")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-gray" dir="ltr">@NotAuditedCount</span>
                         </button>
-                        <button type="button" class="@(FilterButton(ItemFilter.InWork, "warning"))"
+                        <button type="button" class="@FilterPill(ItemFilter.InWork)"
                                 @onclick="() => ActiveFilter = ItemFilter.InWork"
+                                aria-pressed="@(ActiveFilter == ItemFilter.InWork ? "true" : "false")"
                                 title="@T("بنود رُفعت لها ملفات وما زالت عند الجهة: أدلة غير معلَنة أو ملفات لم يُجزها الوكيل")">
-                            @T("قيد العمل") (@InWorkCount)
+                            <span>@T("قيد العمل")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-amber" dir="ltr">@InWorkCount</span>
                         </button>
-                        <button type="button" class="@(FilterButton(ItemFilter.AwaitingVerification, "primary"))"
+                        <button type="button" class="@FilterPill(ItemFilter.AwaitingVerification)"
                                 @onclick="() => ActiveFilter = ItemFilter.AwaitingVerification"
+                                aria-pressed="@(ActiveFilter == ItemFilter.AwaitingVerification ? "true" : "false")"
                                 title="@T("بنود اكتملت أدلتها وأجاز الوكيل كل ملفاتها، وهي الآن عند رئيس وحدة التطوير")">
-                            @T("بانتظار المدقق") (@AwaitingVerificationCount)
+                            <span>@T("بانتظار الاعتماد")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-blue" dir="ltr">@AwaitingVerificationCount</span>
                         </button>
-                        <button type="button" class="@(FilterButton(ItemFilter.Rejected, "danger"))"
+                        <button type="button" class="@FilterPill(ItemFilter.Rejected)"
                                 @onclick="() => ActiveFilter = ItemFilter.Rejected"
+                                aria-pressed="@(ActiveFilter == ItemFilter.Rejected ? "true" : "false")"
                                 title="@T("بنود رفضها رئيس وحدة التطوير بعد إجازة الوكيل، فعادت إليك")">
-                            @T("تم رفضه") (@DoctorRejectedCount)
+                            <span>@T("تم رفضه")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-red" dir="ltr">@DoctorRejectedCount</span>
                         </button>
-                        <button type="button" class="@(FilterButton(ItemFilter.Closed, "success"))"
+                        <button type="button" class="@FilterPill(ItemFilter.Closed)"
                                 @onclick="() => ActiveFilter = ItemFilter.Closed"
+                                aria-pressed="@(ActiveFilter == ItemFilter.Closed ? "true" : "false")"
                                 title="@T("بنود اعتمدها رئيس وحدة التطوير نهائياً")">
-                            @T("معتمد نهائي") (@DoctorApprovedCount)
+                            <span>@T("معتمد نهائي")</span>
+                            <span class="badge rounded-pill zu-filter-count zu-count-green" dir="ltr">@DoctorApprovedCount</span>
                         </button>
                     </div>
                 </div>
@@ -1032,7 +1029,7 @@
     private string BoardStateLabel(AuditItem item) => item.BoardState switch
     {
         ItemBoardState.InWork => item.Status == AuditStatus.NonCompliant ? T("قيد العمل — رفضه الوكيل") : T("قيد العمل"),
-        ItemBoardState.AwaitingFinal => T("بانتظار المدقق"),
+        ItemBoardState.AwaitingFinal => T("بانتظار الاعتماد"),
         ItemBoardState.Rejected => T("تم رفضه"),
         ItemBoardState.Closed => T("معتمد نهائي"),
         _ => T("لم يبدأ")
@@ -1252,9 +1249,9 @@
         _ => "bg-light text-muted border"
     };
 
-    /// <summary>زر التصنيف بلون حالته: المختار مصمت، وغيره إطارٌ باللون ذاته.</summary>
-    private string FilterButton(ItemFilter filter, string color) =>
-        ActiveFilter == filter ? $"btn btn-sm btn-{color}" : $"btn btn-sm btn-outline-{color}";
+    /// <summary>كبسولة التصنيف: المختار داكن مصمت، وغيره أبيض بحدّ خفيف؛ والعدّاد شارةٌ بلون الحالة.</summary>
+    private string FilterPill(ItemFilter filter) =>
+        ActiveFilter == filter ? "zu-filter-pill active" : "zu-filter-pill";
 
     private static void FillLines(HashSet<string> target, IReadOnlyList<string> source)
     {

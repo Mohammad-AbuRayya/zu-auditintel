@@ -1,0 +1,474 @@
+/* ورقة «تقرير فحص التدقيق الداخلي».
+   لونها ثابت لا يتبع سمة الموقع: التقرير وثيقة رسمية تُطبع وتُرسل، فسطحها ورقٌ أبيض وحبرها داكن
+   في النهاري والليلي سواء. ولذلك لا تستعمل أصناف بوتستراب ولا متغيّراته، بل ألوانها مصرّحة هنا.
+   الملف نفسه يُقرأ في الصفحة، ويُنسخ حرفياً داخل ملف Word/HTML المنزَّل، ويُحكم الطباعة: فمصدرٌ
+   واحد للشكل في الثلاثة، ولا يختلف ما رآه المدقّق عمّا نزّله أو طبعه.
+   والتخطيط بالجداول لا بـ flex/grid: لأن Word يقرأ الجداول ولا يقرأ flex، فتخرج الورقة مرتبة فيه. */
+
+.zu-report-sheet {
+    --rp-ink: #0f172a;
+    --rp-muted: #475569;
+    --rp-line: #cbd5e1;
+    --rp-hair: #e2e8f0;
+    --rp-blue: #1d4ed8;
+    --rp-green: #15803d;
+    --rp-red: #b91c1c;
+    --rp-amber: #b45309;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 26px 28px 22px;
+    background: #fff;
+    color: var(--rp-ink);
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.75;
+    text-align: start;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+    .zu-report-sheet *,
+    .zu-report-sheet *::before,
+    .zu-report-sheet *::after {
+        box-sizing: border-box;
+    }
+
+/* ---------- الترويسة: الشعار، ثم الجامعة ووحدتها، ثم اسم الوثيقة ومعيارها ---------- */
+.zu-report-head {
+    width: 100%;
+    border-collapse: collapse;
+    border-bottom: 2px solid var(--rp-ink);
+    margin-bottom: 14px;
+}
+
+    .zu-report-head td {
+        padding: 0 0 12px;
+        vertical-align: middle;
+        border: 0;
+    }
+
+.zu-report-logo-cell {
+    width: 84px;
+}
+
+.zu-report-logo {
+    display: block;
+    width: 74px;
+    height: 74px;
+}
+
+.zu-report-org-ar {
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--rp-ink);
+}
+
+.zu-report-org-en {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: var(--rp-blue);
+}
+
+.zu-report-org-unit {
+    font-size: 12px;
+    color: var(--rp-muted);
+}
+
+.zu-report-doc-cell {
+    width: 250px;
+    text-align: end;
+}
+
+.zu-report-doc-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--rp-ink);
+}
+
+.zu-report-doc-std {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 10px;
+    border: 1px solid var(--rp-blue);
+    border-radius: 999px;
+    color: var(--rp-blue);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .02em;
+}
+
+/* ---------- حقول التعريف: الجهة والمعيار والمدقق والتاريخ ---------- */
+.zu-report-meta {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+}
+
+    .zu-report-meta th,
+    .zu-report-meta td {
+        border: 1px solid var(--rp-line);
+        padding: 7px 10px;
+        vertical-align: middle;
+        font-size: 13px;
+    }
+
+    .zu-report-meta th {
+        width: 130px;
+        background: #f1f5f9;
+        color: var(--rp-muted);
+        font-weight: 700;
+        text-align: start;
+        white-space: nowrap;
+    }
+
+    .zu-report-meta td {
+        color: var(--rp-ink);
+        font-weight: 700;
+    }
+
+/* ---------- حصيلة الفحص: ثلاثة أعداد تُقرأ قبل الجدول ---------- */
+.zu-report-tally {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 6px 0;
+    margin: 0 -6px 14px;
+    table-layout: fixed;
+}
+
+    .zu-report-tally td {
+        border: 1px solid var(--rp-hair);
+        border-radius: 10px;
+        padding: 7px 10px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--rp-muted);
+        background: #f8fafc;
+    }
+
+    .zu-report-tally b {
+        display: block;
+        font-size: 19px;
+        line-height: 1.3;
+    }
+
+.zu-report-tally-ok {
+    background: #f0fdf4 !important;
+    border-color: #bbf7d0 !important;
+    color: var(--rp-green) !important;
+}
+
+.zu-report-tally-bad {
+    background: #fef2f2 !important;
+    border-color: #fecaca !important;
+    color: var(--rp-red) !important;
+}
+
+.zu-report-tally-wip {
+    background: #fffbeb !important;
+    border-color: #fde68a !important;
+    color: var(--rp-amber) !important;
+}
+
+/* ---------- جدول بنود الفحص ---------- */
+.zu-report-table-wrap {
+    width: 100%;
+}
+
+.zu-report-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+    .zu-report-table th,
+    .zu-report-table td {
+        border: 1px solid var(--rp-line);
+        padding: 7px 9px;
+        vertical-align: top;
+        font-size: 12.5px;
+        overflow-wrap: anywhere;
+    }
+
+    .zu-report-table thead th {
+        background: #1e293b;
+        color: #fff;
+        font-weight: 700;
+        text-align: start;
+        vertical-align: middle;
+    }
+
+    .zu-report-table tbody tr:nth-child(even) td {
+        background: #f8fafc;
+    }
+
+.zu-report-col-num {
+    width: 42px;
+}
+
+.zu-report-col-ok {
+    width: 66px;
+}
+
+.zu-report-col-bad {
+    width: 78px;
+}
+
+.zu-report-col-note {
+    width: 30%;
+}
+
+.zu-report-num,
+.zu-report-mark {
+    text-align: center !important;
+    vertical-align: middle !important;
+    font-weight: 700;
+}
+
+.zu-report-num {
+    color: var(--rp-muted);
+}
+
+.zu-report-item-title {
+    font-weight: 700;
+    color: var(--rp-ink);
+}
+
+.zu-report-item-iso {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--rp-blue);
+}
+
+.zu-report-mark-ok {
+    color: var(--rp-green);
+    font-size: 16px;
+}
+
+.zu-report-mark-bad {
+    color: var(--rp-red);
+    font-size: 16px;
+}
+
+.zu-report-note {
+    color: var(--rp-muted);
+    white-space: pre-wrap;
+}
+
+.zu-report-note-bad {
+    color: var(--rp-red);
+    font-weight: 600;
+}
+
+.zu-report-note-wip {
+    color: var(--rp-amber);
+    font-weight: 600;
+}
+
+/* ---------- التذييل: الملخص والتوقيع ---------- */
+.zu-report-foot {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 12px 0;
+    margin: 16px -12px 0;
+    table-layout: fixed;
+}
+
+    .zu-report-foot > tbody > tr > td {
+        vertical-align: top;
+        border: 0;
+        padding: 0;
+    }
+
+.zu-report-sign-cell {
+    width: 260px;
+}
+
+.zu-report-label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--rp-muted);
+}
+
+.zu-report-input {
+    display: block;
+    width: 100%;
+    min-height: 74px;
+    padding: 8px 10px;
+    border: 1px solid var(--rp-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--rp-ink);
+    font-family: inherit;
+    font-size: 12.5px;
+    line-height: 1.7;
+    resize: vertical;
+}
+
+    .zu-report-input:focus {
+        outline: none;
+        border-color: var(--rp-blue);
+        box-shadow: 0 0 0 3px rgba(29, 78, 216, .14);
+    }
+
+.zu-report-sign-input {
+    min-height: 0;
+    height: 38px;
+    resize: none;
+}
+
+/* ما كُتب في الحقل يُطبع ويُنزَّل نصاً لا صندوق إدخال: يُحوّله سكربت التصدير إلى div بهذا الصنف. */
+.zu-report-static {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--rp-line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-height: 74px;
+    font-size: 12.5px;
+    color: var(--rp-ink);
+}
+
+.zu-report-sign-rule {
+    margin-top: 10px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--rp-line);
+    font-size: 11px;
+    color: var(--rp-muted);
+}
+
+.zu-report-stamp {
+    margin-top: 14px;
+    padding-top: 8px;
+    border-top: 1px solid var(--rp-hair);
+    font-size: 10.5px;
+    color: #64748b;
+    text-align: center;
+}
+
+/* على شاشة ضيقة يمرّ الجدول أفقياً بدل أن تُسحق أعمدته: خمسة أعمدة لا تُقرأ في 300 بكسل.
+   وفي الطباعة عرض الصفحة أوسع من هذا الحد، فلا يدخل الجدول في التمرير هناك. */
+@media screen and (max-width: 640px) {
+    .zu-report-table-wrap {
+        overflow-x: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 #f1f5f9;
+    }
+
+    .zu-report-table {
+        min-width: 560px;
+    }
+
+    .zu-report-doc-cell {
+        width: auto;
+    }
+
+    /* حقول الترويسة والتذييل تُرصَف عمودياً: أربعة أعمدة في 400px تكسر التاريخ إلى «202614/11/». */
+    .zu-report-meta,
+    .zu-report-meta tbody,
+    .zu-report-meta tr,
+    .zu-report-meta th,
+    .zu-report-meta td,
+    .zu-report-foot,
+    .zu-report-foot tbody,
+    .zu-report-foot tr,
+    .zu-report-foot td {
+        display: block;
+        width: auto;
+    }
+
+    .zu-report-meta th {
+        border-bottom: 0;
+        padding-bottom: 1px;
+    }
+
+    .zu-report-meta td {
+        padding-top: 1px;
+    }
+
+    .zu-report-foot {
+        border-spacing: 0;
+    }
+
+    .zu-report-sign-cell {
+        width: auto;
+        margin-top: 10px;
+    }
+}
+
+/* ---------- جسم الملف المنزَّل وحده: الورقة فيه هي الصفحة كلها ---------- */
+body.zu-report-export {
+    margin: 0;
+    padding: 18px;
+    background: #fff;
+}
+
+    body.zu-report-export .zu-report-sheet {
+        max-width: none;
+        padding: 0;
+    }
+
+/* ---------- الطباعة: لا يُطبع من التطبيق إلا الورقة ----------
+   ينقل السكربت نسخةً منها إلى جذرٍ مباشر تحت body قبل window.print، فتُخفى بقيّة أبناء body
+   وتبقى الورقة وحدها. لا قصّ ولا شريط جانبي ولا نافذة منبثقة في الورق.
+   والجذر مخفيّ على الشاشة دائماً: فلا يرى المستخدم نسخة ثانية تحت الصفحة وهو ينتظر الطابعة. */
+#zu-report-print-root {
+    display: none;
+}
+
+@media print {
+    @page {
+        size: A4;
+        margin: 14mm 12mm;
+    }
+
+    html.zu-printing-report body > * {
+        display: none !important;
+    }
+
+    html.zu-printing-report body > #zu-report-print-root {
+        display: block !important;
+    }
+
+    #zu-report-print-root {
+        background: #fff;
+    }
+
+        #zu-report-print-root .zu-report-sheet {
+            max-width: none;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            font-size: 11.5px;
+        }
+
+    .zu-report-table thead {
+        display: table-header-group;
+    }
+
+    .zu-report-table tr,
+    .zu-report-meta tr,
+    .zu-report-foot tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .zu-report-table th,
+    .zu-report-table td {
+        font-size: 11px;
+        padding: 5px 7px;
+    }
+
+    .zu-report-foot {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
