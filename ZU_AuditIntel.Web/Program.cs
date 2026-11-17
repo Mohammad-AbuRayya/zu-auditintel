@@ -65,6 +65,7 @@ builder.Services.AddScoped<IAccountDirectory, SqliteAccountDirectory>();
 builder.Services.AddScoped<IEvidenceStore, SqliteEvidenceStore>();
 builder.Services.AddScoped<INotificationStore, SqliteNotificationStore>();
 builder.Services.AddScoped<IMessageStore, SqliteMessageStore>();
+builder.Services.AddScoped<ISubmissionDeadlineStore, SqliteSubmissionDeadlineStore>();
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -103,11 +104,6 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AuthorizationPolicies.CanReviewBoard, policy => policy
         .RequireAuthenticatedUser()
         .RequireAssertion(context => context.User.IsFinalReviewer()));
-
-    // صفحة النتيجة النهائية: صاحبها لا يدقّق، فلا يدخلها من له حق تدقيق. هي لقارئ النتيجة وللمدير.
-    options.AddPolicy(AuthorizationPolicies.CanReadResults, policy => policy
-        .RequireAuthenticatedUser()
-        .RequireAssertion(context => context.User.CanReadFinalResults()));
 });
 
 builder.Services.AddRateLimiter(options =>
@@ -199,7 +195,6 @@ app.MapStaticAssets();
 app.MapAccountEndpoints();
 app.MapReviewEndpoints();
 app.MapBoardEvidenceEndpoints();
-app.MapFinalResultEndpoints();
 
 // نبضة النشاط: أخفّ نقطة في التطبيق، لا تلمس قاعدة البيانات ولا تطلب مصادقة، ووظيفتها الوحيدة
 // تسجيل حركة HTTP عند وسيط Fly.io فيبقى الجهاز مستيقظاً ما دام تبويبٌ مفتوح يرسلها دورياً.

@@ -17,11 +17,18 @@ namespace ZU_AuditIntel.Web.Data
         LocalEvidenceStorage storage,
         INotificationStore notifications,
         IAuditCatalog catalog,
+        ISubmissionDeadlineStore deadlines,
         ILogger<SqliteEvidenceStore> logger) : IEvidenceStore
     {
         public async Task<EvidenceSubmission> SaveAsync(
             NewEvidenceUpload upload, CancellationToken cancellationToken = default)
         {
+            // قفل المهلة قبل أن يُكتب بايتٌ على القرص: الواجهة تُخفي الزر، وهذا الحارس يمنع ما يصل
+            // من جلسةٍ فُتحت قبل الموعد أو من طلبٍ أُعيد إرساله، فلا ملف يدخل بعد انتهاء التسليم.
+            var deadline = await deadlines.GetAsync(cancellationToken);
+            if (deadline.IsExpired)
+                throw new SubmissionClosedException(deadline.DueAt!.Value);
+
             // المفتاح شجرةُ الجهة والبند نفسها التي كانت على القرص، فقيمة stored_path لا تتغيّر دلالتها.
             var key = await storage.PutAsync(
                 upload.DepartmentId, upload.AuditItemId, upload.Extension, upload.Bytes, cancellationToken);

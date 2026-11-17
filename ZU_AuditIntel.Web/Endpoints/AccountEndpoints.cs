@@ -140,8 +140,5 @@ namespace ZU_AuditIntel.Web.Endpoints
 
         /// <summary>شاشة التدقيق النهائي ونقطة تنزيل ملفاتها: الحق نفسه لرئيس الوحدة والمدير.</summary>
         public const string CanReviewBoard = "CanReviewBoard";
-
-        /// <summary>صفحة النتيجة النهائية: لقارئ النتيجة ولمدير النظام، ولا مدقّق فيها.</summary>
-        public const string CanReadResults = "CanReadResults";
     }
 }

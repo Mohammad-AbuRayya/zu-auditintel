@@ -141,12 +141,12 @@
 
 	/// <summary>
 	/// كل صاحب حساب يفتح الشاشة التي يملكها على هذا البند: ممثل الجهة لوحتها، ورئيس الوحدة
-	/// شاشة التدقيق النهائي على كل الجهات، وصاحب النتيجة سجل المعتمد لا شاشة توقيع.
+	/// شاشة التدقيق النهائي على كل الجهات، ومن لا شاشة له يعود إلى صفحة اللوحات.
 	/// </summary>
 	private string LinkFor(NotificationRow row)
 	{
 		if (IsResultReader)
-			return "/results";
+			return "/pending";
 
 		if (IsRepresentative)
 			return $"/Audit/{row.DepartmentId}";

@@ -3,11 +3,14 @@
 @* بلا تصيير مسبق: قراءة البيانات مرة واحدة على الدارة لا مرتين (SSR ثم دارة)، فالاستعلامات نصف ما كانت. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize(Policy = AuthorizationPolicies.CanAudit)]
+@implements IDisposable
 @inject IAuditCatalog Catalog
 @inject IEvidenceStore Evidence
+@inject ISubmissionDeadlineStore Deadlines
 @inject NavigationManager Navigation
 @inject AuditAiClient Ai
 @using ZU_AuditIntel.Web.Endpoints
+@using System.Globalization
 @using System.IO
 @using System.IO.Compression
 @using System.Net
@@ -34,15 +37,153 @@
         flex-shrink: 0;
     }
 
+    /* شريطٌ واحد بثلاثة أقسام تفصلها خطوطٌ رفيعة، وبطاقة الموعد مستقلةٌ في حافة الصف اليسرى. */
+    .zu-stats-bar {
+        display: flex;
+        /* بطاقة بوتستراب تفرض عموداً على كل .card، والشريط أفقيٌ بخطوط فاصلة بين خلاياه */
+        flex-direction: row;
+        align-items: stretch;
+        overflow: hidden;
+    }
+
+    .zu-stat-cell {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 18px 22px;
+    }
+
+        .zu-stat-cell + .zu-stat-cell {
+            border-inline-start: 1px solid #e6ebf3;
+        }
+
+    .zu-deadline-card {
+        flex: 0 0 290px;
+        background: #fdf3f3;
+        border: 1px solid #f0c9c9;
+        color: #8f1d1d;
+    }
+
+        .zu-deadline-card .card-body {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 18px 20px;
+        }
+
+        .zu-deadline-card.is-expired {
+            background: #fbe9e9;
+            border-color: #e2a3a3;
+        }
+
+    .zu-deadline-icon {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+        background: #f8e3e3;
+        color: #b42318;
+    }
+
+    .zu-deadline-label {
+        font-size: .8rem;
+        font-weight: 600;
+    }
+
+    .zu-deadline-value {
+        font-size: 1.3rem;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+
+    .zu-deadline-state {
+        font-size: .72rem;
+        font-weight: 700;
+    }
+
+    .zu-closed-alert {
+        background: #fdf3f3;
+        border: 1px solid #f0c9c9;
+        color: #8f1d1d;
+    }
+
+    .zu-closed-note {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: #fdf3f3;
+        border: 1px dashed #e2a3a3;
+        color: #8f1d1d;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    @@media (max-width: 991.98px) {
+        .zu-deadline-card {
+            flex: 1 1 auto;
+        }
+    }
+
+    @@media (max-width: 767.98px) {
+        .zu-stats-bar {
+            flex-direction: column;
+        }
+
+        .zu-stat-cell + .zu-stat-cell {
+            border-inline-start: 0;
+            border-top: 1px solid #e6ebf3;
+        }
+    }
+
     .zu-progress {
         height: 14px;
     }
 
     /* البحث يبدأ من يمين الصف تحت العنوان، والتصنيفات تُدفع إلى حافته اليسرى. */
+    /* خانة البحث عن بند: شكل خانة شاشة التدقيق النهائي وأبعادها وأيقونتها نفسها. */
     .zu-item-search {
-        flex: 0 1 300px;
+        position: relative;
+        flex: 0 1 340px;
         min-width: 220px;
     }
+
+        .zu-item-search .zu-search-icon {
+            position: absolute;
+            inset-inline-start: 13px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            pointer-events: none;
+        }
+
+        .zu-item-search input {
+            width: 100%;
+            padding: 9px 14px;
+            padding-inline-start: 38px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background-color: #fff;
+            color: #0f172a;
+            font-size: .9rem;
+            transition: border-color .15s ease, box-shadow .15s ease;
+        }
+
+            .zu-item-search input::placeholder {
+                color: #94a3b8;
+            }
+
+            .zu-item-search input:focus {
+                outline: none;
+                border-color: #93c5fd;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+            }
 
     .zu-dropzone {
         position: relative;
@@ -269,34 +410,41 @@
     /* البند لا يُفتَح عليه الرفع والتدقيق إلا بعد أن تحدده الجهة بنفسها، والتحديد يقبل أكثر من بند */
     .zu-pick {
         margin-top: 12px;
-        border: 1px dashed #cbd5e1;
-        border-radius: 12px;
-        padding: 10px 14px;
-        background: #f8fafc;
     }
 
-        .zu-pick.zu-picked {
-            border: 1px solid #16a34a;
-            background: #f0fdf4;
-        }
-
-    .zu-pick-label {
+    /* زر الرفع بعرض البطاقة كله: أزرق قبل التحديد، وأخضر بعلامة صح بعده */
+    .zu-pick-btn {
+        width: 100%;
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin: 0;
+        justify-content: center;
+        gap: 8px;
+        padding: 11px 14px;
+        border: 1px solid #0d6efd;
+        border-radius: 12px;
+        background-color: #0d6efd;
+        color: #fff;
         font-size: .95rem;
         font-weight: 700;
-        color: #334155;
+        line-height: 1.4;
         cursor: pointer;
+        transition: background-color .15s ease, border-color .15s ease;
     }
 
-        .zu-pick-label input[type=checkbox] {
-            width: 18px;
-            height: 18px;
-            flex-shrink: 0;
-            accent-color: #16a34a;
+        .zu-pick-btn:hover {
+            background-color: #0b5ed7;
+            border-color: #0a58ca;
         }
+
+        .zu-pick-btn.zu-pick-btn-on {
+            background-color: #16a34a;
+            border-color: #16a34a;
+        }
+
+            .zu-pick-btn.zu-pick-btn-on:hover {
+                background-color: #15803d;
+                border-color: #166534;
+            }
 
     .zu-pick-hint {
         margin-top: 6px;
@@ -412,9 +560,50 @@
             color: #065f46;
         }
 
+    /* الإشعار المؤقت: ثابت أسفل وسط الشاشة في اللغتين، فلا يحجز مكاناً في تخطيط البطاقة. */
+    .zu-toast {
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1080;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        max-width: min(92vw, 460px);
+        padding: 12px 18px;
+        border-radius: 14px;
+        background: #fff7ed;
+        border: 1px solid #fdba74;
+        color: #9a3412;
+        font-size: .95rem;
+        font-weight: 700;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .18);
+        animation: zu-toast-in .18s ease-out;
+    }
+
+    @@keyframes zu-toast-in {
+        from {
+            opacity: 0;
+            transform: translate(-50%, 12px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+    }
+
 </style>
 
 <div dir="@Ui.Dir" class="zu-audit-page">
+    @if (ToastMessage is not null)
+    {
+        <div class="zu-toast" role="alert" aria-live="assertive">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>@T(ToastMessage)</span>
+        </div>
+    }
     <div class="container-fluid px-0">
 
         @* ===================== 1) رأس الصفحة ===================== *@
@@ -440,53 +629,67 @@
             </div>
         </PageHeader>
 
-        @* ===================== 2) شريط الإحصائيات ===================== *@
-        <div class="row g-3 mb-4">
-            <div class="col-6 col-xl-3">
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex align-items-center gap-3">
-                        <div class="zu-stat-icon rounded-4 bg-primary-subtle text-primary"><i class="bi bi-list-check"></i></div>
-                        <div>
-                            <div class="small text-muted">@T("إجمالي البنود")</div>
-                            <div class="fs-3 fw-bold">@AuditItems.Count</div>
-                        </div>
+        @* ===================== 2) شريط الإحصائيات وبطاقة موعد التسليم ===================== *@
+        <div class="d-flex flex-column flex-lg-row gap-3 mb-4 align-items-stretch">
+            <div class="zu-stats-bar card border-0 shadow-sm rounded-4 flex-grow-1">
+                <div class="zu-stat-cell">
+                    <div class="zu-stat-icon rounded-4 bg-primary-subtle text-primary"><i class="bi bi-list-check"></i></div>
+                    <div>
+                        <div class="small text-muted">@T("إجمالي البنود")</div>
+                        <div class="fs-3 fw-bold">@AuditItems.Count</div>
+                    </div>
+                </div>
+                <div class="zu-stat-cell">
+                    <div class="zu-stat-icon rounded-4 bg-info-subtle text-info-emphasis"><i class="bi bi-diagram-3"></i></div>
+                    <div>
+                        <div class="small text-muted">@T("البنود المشتركة")</div>
+                        <div class="fs-3 fw-bold">@CommonCount</div>
+                    </div>
+                </div>
+                <div class="zu-stat-cell">
+                    <div class="zu-stat-icon rounded-4 bg-warning-subtle text-warning-emphasis"><i class="bi bi-bookmark-check"></i></div>
+                    <div>
+                        <div class="small text-muted">@T("البنود الخاصة بالجهة")</div>
+                        <div class="fs-3 fw-bold">@SpecificCount</div>
                     </div>
                 </div>
             </div>
-            <div class="col-6 col-xl-3">
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex align-items-center gap-3">
-                        <div class="zu-stat-icon rounded-4 bg-info-subtle text-info-emphasis"><i class="bi bi-diagram-3"></i></div>
-                        <div>
-                            <div class="small text-muted">@T("البنود المشتركة")</div>
-                            <div class="fs-3 fw-bold">@CommonCount</div>
+
+            @* بطاقة الموعد مستقلة عن الشريط وفي أقصى اليسار: تاريخها من القاعدة، يحدّده رئيس الوحدة وحده. *@
+            <div class="zu-deadline-card card rounded-4 shadow-sm @(Deadline.IsExpired ? "is-expired" : "")">
+                <div class="card-body">
+                    <div class="zu-deadline-icon rounded-4"><i class="bi bi-calendar-event"></i></div>
+                    <div>
+                        <div class="zu-deadline-label">@T("آخر موعد للتسليم بتاريخ")</div>
+                        <div class="zu-deadline-value">
+                            @if (Deadline.IsSet)
+                            {
+                                <span dir="ltr">@Deadline.DueAt!.Value.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)</span>
+                            }
+                            else
+                            {
+                                @T("غير محدد")
+                            }
                         </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-xl-3">
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex align-items-center gap-3">
-                        <div class="zu-stat-icon rounded-4 bg-warning-subtle text-warning-emphasis"><i class="bi bi-bookmark-check"></i></div>
-                        <div>
-                            <div class="small text-muted">@T("البنود الخاصة بالجهة")</div>
-                            <div class="fs-3 fw-bold">@SpecificCount</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-xl-3">
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body d-flex align-items-center gap-3">
-                        <div class="zu-stat-icon rounded-4 bg-success-subtle text-success"><i class="bi bi-check2-circle"></i></div>
-                        <div>
-                            <div class="small text-muted">@T("البنود المكتملة / المطابقة")</div>
-                            <div class="fs-3 fw-bold">@CompliantCount <span class="fs-6 text-muted fw-normal">/ @AuditItems.Count</span></div>
-                        </div>
+                        @if (Deadline.IsExpired)
+                        {
+                            <div class="zu-deadline-state"><i class="bi bi-lock-fill"></i> @T("انتهت مهلة التسليم")</div>
+                        }
                     </div>
                 </div>
             </div>
         </div>
+
+        @if (UploadClosed)
+        {
+            <div class="zu-closed-alert alert d-flex align-items-start gap-2 rounded-4 mb-4" role="alert">
+                <i class="bi bi-lock-fill fs-5"></i>
+                <div>
+                    <div class="fw-bold">@T("انتهت مهلة التسليم، فأُقفل رفع الملفات")</div>
+                    <div class="small">@F("آخر موعد للتسليم كان {0}. لا يُقبل رفعٌ جديد ولا تحديثٌ لملف في أي جهة حتى يمدّد رئيس وحدة التطوير وضمان الجودة الموعد.", DeadlineText)</div>
+                </div>
+            </div>
+        }
 
         @* ===================== 3) البنود: الرفع والفحص الذكي ينسدلان داخل البند نفسه ===================== *@
         <div class="card border-0 shadow-sm rounded-4">
@@ -496,9 +699,9 @@
                 </h3>
                 @* صفٌّ واحد: خانة البحث تبدأ من يمين الرأس، والتصنيفات في حافته اليسرى. *@
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <div class="input-group zu-item-search">
-                        <span class="input-group-text bg-white border"><i class="bi bi-search text-muted"></i></span>
-                        <input type="search" class="form-control border" @bind="ItemQuery" @bind:event="oninput"
+                    <div class="zu-item-search">
+                        <i class="bi bi-search zu-search-icon"></i>
+                        <input type="search" @bind="ItemQuery" @bind:event="oninput"
                                placeholder="@T("ابحث عن بند بالاسم أو الرقم")" aria-label="@T("ابحث عن بند بالاسم أو الرقم")" />
                     </div>
                     <div class="zu-item-filters" role="group" aria-label="@T("فلترة البنود")" dir="@Ui.Dir">
@@ -576,7 +779,7 @@
                                     @F("{0} من {1} دليل", CoveredCount(row), row.RequiredEvidence.Count)
                                 </span>
                                 <span class="zu-item-count text-muted"><i class="bi bi-paperclip"></i> @F("{0} ملف", row.Files.Count)</span>
-                                @if (UploadTargets.Contains(row.Id))
+                                @if (!UploadClosed && UploadTargets.Contains(row.Id))
                                 {
                                     <span class="zu-pick-chip"><i class="bi bi-check2-square"></i> @T("محدّد للرفع")</span>
                                 }
@@ -699,16 +902,33 @@
                                                         }
                                                     </div>
 
-                                                    @* البند بوابةٌ لنفسه: لا رفع ولا تدقيق قبل أن تحدده الجهة، والتحديد يشمل أكثر من بند *@
-                                                    @if (state is ItemBoardState.NoEvidence or ItemBoardState.InWork)
+                                                    @* البند بوابةٌ لنفسه: لا رفع ولا تدقيق قبل أن تحدده الجهة، والتحديد يشمل أكثر من بند.
+                                                       وزر «ارفع» يبقى بعد نجاح الرفع أزرقَ كما كان: من أراد تحديث ملفٍ ضغطه من جديد. *@
+                                                    @if (!UploadClosed && state is ItemBoardState.NoEvidence or ItemBoardState.InWork)
                                                     {
-                                                        <div class="zu-pick @(uploadTarget ? "zu-picked" : "")">
-                                                            <label class="zu-pick-label">
-                                                                <input type="checkbox" checked="@uploadTarget"
-                                                                       @onchange="(e) => SetUploadTarget(item.Id, e.Value is bool value && value)" />
-                                                                <span>@T("اختر هذا البند للرفع")</span>
-                                                            </label>
+                                                        <div class="zu-pick">
+                                                            <button type="button" class="zu-pick-btn @(uploadTarget ? "zu-pick-btn-on" : "")"
+                                                                    aria-pressed="@(uploadTarget ? "true" : "false")"
+                                                                    @onclick="() => SetUploadTarget(item.Id, !uploadTarget)">
+                                                                @if (uploadTarget)
+                                                                {
+                                                                    <i class="bi bi-check2-circle"></i>
+                                                                    <span>@T("محدّد للرفع")</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <i class="bi bi-upload"></i>
+                                                                    <span>@T("ارفع")</span>
+                                                                }
+                                                            </button>
                                                             <div class="zu-pick-hint">@T("لن يظهر صندوق رفع الملفات ولا زر التدقيق قبل تحديد البند، ولك أن تحدّد أكثر من بند.")</div>
+                                                        </div>
+                                                    }
+                                                    else if (UploadClosed && state is ItemBoardState.NoEvidence or ItemBoardState.InWork)
+                                                    {
+                                                        <div class="zu-closed-note">
+                                                            <i class="bi bi-lock-fill"></i>
+                                                            <span>@F("أُقفل الرفع لانتهاء مهلة التسليم ({0}).", DeadlineText)</span>
                                                         </div>
                                                     }
                                                 </div>
@@ -735,7 +955,7 @@
                                                     @if (uploadTarget || freshFiles.Count > 0)
                                                     {
                                                     <div class="mb-3">
-                                                        @if (uploadTarget)
+                                                        @if (uploadTarget && !UploadClosed)
                                                         {
                                                         <div class="zu-dropzone rounded-4 @(IsDragOver ? "drag-over" : "") @(item.IsAnalyzing || IsUploading ? "disabled" : "")"
                                                              @ondragenter="() => IsDragOver = true"
@@ -797,7 +1017,8 @@
                                                     </div>
                                                     }
 
-                                                    @if (uploadTarget)
+                                                    @* زر التدقيق يبقى بعد الرفع وإن طُوي صندوقه: الملف صار على البند فالبند قابل للفحص *@
+                                                    @if (uploadTarget || item.Files.Count > 0)
                                                     {
                                                     <div class="d-grid gap-2 mb-3">
                                                         <button type="button" class="btn btn-primary btn-lg rounded-4 shadow-sm d-flex align-items-center justify-content-center gap-2"
@@ -997,6 +1218,10 @@
     private bool IsUploading;
     private readonly List<string> UploadErrors = new();
 
+    /// <summary>إشعار منبثق يزول وحده: بديل التنبيه الثابت الذي كان يحتل مكانه تحت زر التدقيق.</summary>
+    private string? ToastMessage;
+    private CancellationTokenSource? ToastTimer;
+
     // الرافع يُخزَّن مع كل ملف، لأن شاشة التدقيق النهائي تسأل «من قدّم هذا الدليل؟».
     private string UploaderEmployeeId = string.Empty;
     private string UploaderName = string.Empty;
@@ -1004,8 +1229,21 @@
     /// <summary>زر تجاوز الوكيل حقٌّ لمدير النظام وحده، وممثل الجهة لا يراه أصلاً.</summary>
     private bool IsSystemAdmin { get; set; }
 
+    /// <summary>
+    /// موعد التسليم كما حدّده رئيس الوحدة. يُقرأ عند فتح اللوحة وعند كل ضغطة رفع، فمهلةٌ انتهت
+    /// أثناء الجلسة تُقفل الرفع فيها دون أن يحتاج صاحب الجهة إلى إعادة تحميل الصفحة.
+    /// </summary>
+    private SubmissionDeadline Deadline = SubmissionDeadline.None;
+
     // ===================== القيم المحسوبة =====================
     private string BoardTitle => DepartmentName.Length == 0 ? T("لوحة التدقيق") : F("تدقيق {0}", DepartmentName);
+
+    /// <summary>انتهت المهلة: لا زر رفع ولا صندوق ملفات في أي بند، والمخزن وحده يرفض ما يصل بعده.</summary>
+    private bool UploadClosed => Deadline.IsExpired;
+
+    private string DeadlineText => Deadline.IsSet
+        ? Deadline.DueAt!.Value.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)
+        : T("غير محدد");
 
     private int CommonCount => AuditItems.Count(i => i.Category == ItemCategory.Common);
     private int SpecificCount => AuditItems.Count(i => i.Category == ItemCategory.Specific);
@@ -1116,6 +1354,7 @@
         }
 
         DepartmentName = T(department.DepartmentName);
+        Deadline = await Deadlines.GetAsync();
 
         var definitions = await Catalog.GetItemsAsync(DepartmentId);
 
@@ -1306,8 +1545,8 @@
     }
 
     /// <summary>
-    /// البنود التي حدّدتها الجهة لترفع عليها. لا يظهر صندوق الرفع ولا زر التدقيق في بند ما لم
-    /// يكن هنا، والتحديد يعمل لعدة بنود معاً.
+    /// البنود التي حدّدتها الجهة لترفع عليها. لا يظهر صندوق الرفع في بند ما لم يكن هنا،
+    /// والتحديد يعمل لعدة بنود معاً، ويزول عن البند وحده عند نجاح رفعه فيُطوى صندوقه.
     /// </summary>
     private readonly HashSet<int> UploadTargets = new();
 
@@ -1335,6 +1574,15 @@
         var item = SelectedItem;
         UploadErrors.Clear();
         IsDragOver = false;
+
+        // المهلة تُقرأ لحظة الرفع لا لحظة فتح الصفحة: جلسةٌ بقيت مفتوحة بعد الموعد لا ترفع ملفاً.
+        Deadline = await Deadlines.GetAsync();
+        if (UploadClosed)
+        {
+            UploadErrors.Add(F("انتهت مهلة التسليم ({0})، فلا يُقبل رفعٌ جديد.", DeadlineText));
+            return;
+        }
+
         IsUploading = true;
 
         try
@@ -1346,6 +1594,7 @@
                 files = files.Take(MaxFilesPerUpload).ToList();
             }
 
+            var uploaded = 0;
             foreach (var file in files)
             {
                 var ext = Path.GetExtension(file.Name).ToLowerInvariant();
@@ -1369,11 +1618,12 @@
 
                     var inspection = ext == ".pdf" ? InspectPdf(bytes) : InspectDocx(bytes);
 
-                    item.Files.RemoveAll(f => f.Name.Equals(file.Name, StringComparison.OrdinalIgnoreCase));
-
                     // الملف ومحله في المخزن يصيران صفّاً واحداً، ومن ذلك الصف تقرأ شاشة التدقيق النهائي.
                     var submission = await Evidence.SaveAsync(new NewEvidenceUpload(
                         DepartmentId, item.Id, file.Name, ext, bytes, UploaderEmployeeId, UploaderName));
+
+                    // الاستبدال بعد نجاح الحفظ لا قبله: ملفٌ رفضه المخزن لا يمحو من اللوحة سابقه الذي ما زال محفوظاً.
+                    item.Files.RemoveAll(f => f.Name.Equals(file.Name, StringComparison.OrdinalIgnoreCase));
 
                     item.Files.Add(new UploadedEvidenceFile
                     {
@@ -1384,6 +1634,16 @@
                         UploadedAt = submission.UploadedAt,
                         Inspection = inspection
                     });
+                    uploaded++;
+                }
+                catch (SubmissionClosedException)
+                {
+                    // المخزن هو من رفض: انتهت المهلة بين فتح الصفحة والرفع، فلا يُكتب الملف ولا يُبطل قرار ما رُفع قبلها.
+                    Deadline = await Deadlines.GetAsync();
+                    UploadErrors.Add(F("انتهت مهلة التسليم ({0})، فلم يُحفظ الملف \"{1}\".", DeadlineText, file.Name));
+                    if (uploaded > 0)
+                        await MarkItemAsChangedAsync(item);
+                    return;
                 }
                 catch (FirestoreUnavailableException)
                 {
@@ -1394,6 +1654,11 @@
                     UploadErrors.Add(F("تعذر قراءة الملف \"{0}\": {1}", file.Name, ex.Message));
                 }
             }
+
+            // ناجحُ الرفع يعود زرُّه «ارفع» أزرقَ كما كان قبل الضغط: صندوق الرفع يُطوى وحده،
+            // ومن أراد تحديث ملفٍ أو رفع آخر ضغط الزر من جديد بلا إعادة ضبط البند.
+            if (uploaded > 0)
+                UploadTargets.Remove(item.Id);
 
             await MarkItemAsChangedAsync(item);
         }
@@ -1501,9 +1766,50 @@
         }
     };
 
+    // ===================== الإشعار المؤقت =====================
+    /// <summary>
+    /// ضغطةٌ جديدة تُبطل مؤقّت الإشعار السابق وتبدأ عدّها من جديد، فلا يختفي إشعارٌ للتو ظهر
+    /// لأن سابقه انتهى عدّه. ومن غادر الصفحة أُلغي المؤقّت فلا يُرسم شيء على مكوّن ذهب.
+    /// </summary>
+    private async Task ShowToastAsync(string message)
+    {
+        ToastTimer?.Cancel();
+        ToastTimer?.Dispose();
+        ToastTimer = new CancellationTokenSource();
+        var token = ToastTimer.Token;
+
+        ToastMessage = message;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        ToastMessage = null;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ToastTimer?.Cancel();
+        ToastTimer?.Dispose();
+    }
+
     private async Task RunAiAuditAsync()
     {
         if (SelectedItem is null || SelectedItem.Files.Count == 0 || SelectedItem.IsAnalyzing) return;
+
+        // البوابة الثانية: ملفٌ بلا دليل معلَن لا يُدقَّق، فالوكيل يحكم على ما أعلنته الجهة وحده.
+        if (SelectedItem.CoveredEvidence.Count == 0)
+        {
+            await ShowToastAsync("يرجى تحديد دليل واحد على الأقل لبدء التدقيق");
+            return;
+        }
 
         var item = SelectedItem;
         item.IsAnalyzing = true;

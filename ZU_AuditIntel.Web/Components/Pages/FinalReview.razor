@@ -4,12 +4,15 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize(Policy = AuthorizationPolicies.CanReviewBoard)]
 @inject IEvidenceStore Store
+@inject ISubmissionDeadlineStore Deadlines
 @inject IAuditCatalog Catalog
+@inject AuditAiClient Ai
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @implements IDisposable
 @using ZU_AuditIntel.Web.Endpoints
 @using System.Globalization
+@using System.Security.Cryptography
 
 <PageTitle>@SheetTitle</PageTitle>
 
@@ -32,6 +35,44 @@
     .zu-progress {
         height: 14px;
     }
+
+    /* صندوق الموعد: بلون بطاقة الموعد في لوحات الجهات نفسها، وحقّ الكتابة فيه لرئيس الوحدة وحده. */
+    .zu-deadline-editor {
+        border-inline-start: 4px solid #d98c8c;
+    }
+
+    .zu-deadline-editor-icon {
+        width: 52px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        flex-shrink: 0;
+        background: #f8e3e3;
+        color: #b42318;
+    }
+
+    .zu-deadline-input {
+        width: 190px;
+    }
+
+    .zu-deadline-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: .75rem;
+        font-weight: 700;
+        background: #f8e3e3;
+        color: #8f1d1d;
+    }
+
+        .zu-deadline-chip.is-open {
+            background: #e7f4ec;
+            color: #1c6b3c;
+        }
 
     /* خانة البحث عن جهة أو بند أو رمز آيزو: تُدفع إلى الطرف الآخر من سطر العنوان. */
     .zu-stats-search {
@@ -831,6 +872,55 @@
             </div>
         }
 
+        @* ===================== آخر موعد للتسليم =====================
+           كتابته حقٌّ لرئيس وحدة التطوير وضمان الجودة وحده: مدير النظام يعاين الشاشة ولا يحدّد موعداً. *@
+        @if (CanSetDeadline)
+        {
+            <div class="zu-deadline-editor card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-wrap align-items-center gap-3">
+                        <div class="zu-deadline-editor-icon rounded-4"><i class="bi bi-calendar-event"></i></div>
+                        <div class="flex-grow-1" style="min-width: 240px;">
+                            <h2 class="h6 fw-bold mb-1 d-flex flex-wrap align-items-center gap-2">
+                                @T("آخر موعد للتسليم")
+                                <span class="zu-deadline-chip @(Deadline.IsExpired ? "" : "is-open")">
+                                    <i class="bi @(Deadline.IsExpired ? "bi-lock-fill" : "bi-unlock-fill")"></i>
+                                    @DeadlineStateLabel
+                                </span>
+                            </h2>
+                            <div class="small text-muted">@T("تحدّده أنت وحدك ويسري على كل الجهات: بانقضائه يُقفل رفع الملفات في لوحاتها.")</div>
+                            @if (Deadline.IsSet)
+                            {
+                                <div class="small text-muted mt-1">
+                                    <i class="bi bi-person-check"></i>
+                                    @F("حدّده {0} في {1}", Person(Deadline.SetByName), Deadline.SetAt?.ToString("yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture) ?? "—")
+                                </div>
+                            }
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            @* خانة تاريخ المتصفح بصيغة yyyy-MM-dd نصاً: ربطُ Blazor الافتراضي لخانة date يفرض DateTime لا نصاً. *@
+                            <input type="date" class="form-control rounded-3 zu-deadline-input" dir="ltr"
+                                   value="@DeadlineInput" disabled="@DeadlineBusy"
+                                   @onchange="e => DeadlineInput = e.Value?.ToString() ?? string.Empty"
+                                   aria-label="@T("آخر موعد للتسليم")" />
+                            <button type="button" class="btn btn-primary rounded-3 d-inline-flex align-items-center gap-2"
+                                    disabled="@DeadlineBusy" @onclick="SaveDeadlineAsync">
+                                <i class="bi bi-check2-lg"></i> @T("حفظ الموعد")
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary rounded-3 d-inline-flex align-items-center gap-2"
+                                    disabled="@DeadlineBusy" @onclick="ClearDeadlineAsync">
+                                <i class="bi bi-x-lg"></i> @T("بلا موعد")
+                            </button>
+                        </div>
+                    </div>
+                    @if (DeadlineMessage is not null)
+                    {
+                        <div class="alert @DeadlineMessageClass rounded-3 small mt-3 mb-0 py-2">@DeadlineMessage</div>
+                    }
+                </div>
+            </div>
+        }
+
         @* ===================== إحصائيات كل الجهات =====================
            الشبكة وصفحة الجهة وجهان لشاشة واحدة: ما دامت جهةٌ مفتوحة فالشبكة غائبة كلها،
            فلا يبقى تحت الصفحة جدولٌ كاملٌ لا يقرؤه أحد. *@
@@ -1369,6 +1459,26 @@
     /// <summary>مدير النظام داخل شاشة رئيس الوحدة بصلاحياته كاملة، والشريط الأعلى يخبره بذلك.</summary>
     private bool IsAdmin { get; set; }
 
+    /// <summary>تحديد موعد التسليم حقٌّ لرئيس الوحدة وحده: مدير النظام يعاين ولا يحدّد.</summary>
+    private bool CanSetDeadline { get; set; }
+
+    private SubmissionDeadline Deadline = SubmissionDeadline.None;
+    private string DeadlineInput = string.Empty;
+    private bool DeadlineBusy;
+    private string? DeadlineMessage;
+    private string DeadlineMessageClass = "alert-success";
+
+    private string DeadlineStateLabel => Deadline switch
+    {
+        { IsExpired: true } => T("انتهت المهلة — الرفع مقفل في كل الجهات"),
+        { IsSet: true } => T("الرفع مفتوح في كل الجهات"),
+        _ => T("لا موعد محدد — الرفع مفتوح في كل الجهات")
+    };
+
+    private string DeadlineText => Deadline.IsSet
+        ? Deadline.DueAt!.Value.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)
+        : T("غير محدد");
+
     private List<DepartmentAuditStat> Stats = new();
     private List<ReviewItemRow> Items = new();
 
@@ -1604,6 +1714,62 @@
 
     private static string PreviewHref(string submissionId) => $"/review/evidence/{submissionId}";
 
+    // ===================== آخر موعد للتسليم =====================
+    /// <summary>
+    /// اليوم المحدّد مشمولٌ كله: الموعد آخر لحظةٍ منه، فالجهة ترفع حتى منتصف ليله لا حتى أوله.
+    /// والتاريخ الماضي مسموحٌ به: به تُقفل الجهات فوراً إن انتهى التسليم قبل أن يُسجَّل الموعد.
+    /// </summary>
+    private async Task SaveDeadlineAsync()
+    {
+        if (!CanSetDeadline)
+            return;
+
+        if (!DateOnly.TryParseExact(DeadlineInput, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+        {
+            DeadlineMessage = T("اختر تاريخاً صحيحاً لآخر موعد للتسليم.");
+            DeadlineMessageClass = "alert-danger";
+            return;
+        }
+
+        DeadlineBusy = true;
+        try
+        {
+            await Deadlines.SetAsync(day.ToDateTime(TimeOnly.MaxValue), ReviewerEmployeeId, ReviewerName);
+            await ReloadDeadlineAsync();
+            DeadlineMessage = F("حُفظ آخر موعد للتسليم: {0}.", DeadlineText);
+            DeadlineMessageClass = "alert-success";
+        }
+        finally
+        {
+            DeadlineBusy = false;
+        }
+    }
+
+    private async Task ClearDeadlineAsync()
+    {
+        if (!CanSetDeadline)
+            return;
+
+        DeadlineBusy = true;
+        try
+        {
+            await Deadlines.SetAsync(null, ReviewerEmployeeId, ReviewerName);
+            await ReloadDeadlineAsync();
+            DeadlineMessage = T("أُلغي الموعد، فالرفع مفتوح في كل الجهات.");
+            DeadlineMessageClass = "alert-success";
+        }
+        finally
+        {
+            DeadlineBusy = false;
+        }
+    }
+
+    private async Task ReloadDeadlineAsync()
+    {
+        Deadline = await Deadlines.GetAsync();
+        DeadlineInput = Deadline.DueAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -1611,10 +1777,12 @@
             var user = (await AuthState).User;
             SeesEveryDepartment = user.IsFinalReviewer();
             IsAdmin = user.IsSystemAdministrator();
+            CanSetDeadline = user.IsQualityHead();
             ReviewerName = user.Identity?.Name ?? ReviewerName;
             ReviewerEmployeeId = user.FindFirst(AuditClaims.EmployeeId)?.Value ?? string.Empty;
         }
 
+        await ReloadDeadlineAsync();
         Stats = (await Store.GetDepartmentStatsAsync()).ToList();
         ItemIndex = await Catalog.GetItemIndexAsync();
     }
@@ -1888,12 +2056,18 @@
         IsBusy = true;
         try
         {
+            // البصمة تُقرأ والدارة حيّة: المخزن متجر جلسة لا يعمل بعد إغلاق الشاشة، والإرسال وحده خلفي.
+            var feedback = await RejectionFeedbackAsync(submissionId, note.Trim());
+
             await Store.ApplyFinalOutcomeAsync(submissionId, FinalOutcome.Rejected, note.Trim(), ReviewerEmployeeId, ReviewerName);
             Rejecting.Remove(submissionId);
             Notes.Remove(submissionId);
             Message = T("رُفض الملف، فصار بندُه «تم رفضه» وعاد إلى الجهة لإجراء تصحيحي.");
             MessageClass = "alert-warning";
             await RefreshAsync();
+
+            if (feedback is not null)
+                _ = Ai.ReportHumanRejectionAsync(feedback);
         }
         catch (FirestoreUnavailableException)
         {
@@ -1904,6 +2078,38 @@
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// ما يُغذّي ذاكرة الوكلاء من رفضٍ بشري: البند وأدلته المعلَنة وسبب الرفض وبصمة بايتات الملف نفسها
+    /// التي فحصها الوكيل. وبلا بايتات لا بصمة، فلا يُخزَّن سجلٌ لا يُطابق شيئاً.
+    /// </summary>
+    private async Task<HumanRejectionFeedback?> RejectionFeedbackAsync(string submissionId, string reason)
+    {
+        var item = Items.FirstOrDefault(row => row.Files.Any(file => file.SubmissionId == submissionId));
+        var file = item?.Files.FirstOrDefault(entry => entry.SubmissionId == submissionId);
+        if (item is null || file is null || LoadedDepartmentId is null)
+            return null;
+
+        var bytes = await Store.ReadBytesAsync(submissionId);
+        if (bytes is null)
+            return null;
+
+        var evidence = (file.ProvidedEvidence ?? string.Empty)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return new HumanRejectionFeedback(
+            LoadedDepartmentId,
+            item.ItemNumber,
+            item.Title,
+            item.IsoReference,
+            evidence,
+            file.FileName,
+            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            reason,
+            ReviewerName,
+            ReviewerEmployeeId,
+            submissionId);
     }
 
     private void ToggleReject(string submissionId)

@@ -65,7 +65,7 @@
         if (departmentId is null)
         {
             // من لا جهة له: مدير النظام يفتح اللوحات كلها، وبقية الأدوار تتبع وحدة الجودة نفسها.
-            DepartmentName = user.IsSystemAdministrator() ? T("جميع الجهات") : T("وحدة الاعتماد وضمان الجودة");
+            DepartmentName = user.IsSystemAdministrator() ? T("جميع الجهات") : T("وحدة التطوير وضمان الجودة");
             return;
         }
 

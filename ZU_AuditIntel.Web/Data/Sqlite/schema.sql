@@ -129,3 +129,13 @@ create table if not exists messages (
     sent_at            text not null
 );
 create index if not exists messages_thread on messages (thread_pair_key, sent_at, id);
+
+-- 6) آخر موعد للتسليم: صفٌ واحد لكل الجامعة، يحدّده رئيس وحدة الجودة وحده.
+-- غياب الصف يعني «غير محدد» فالرفع مفتوح، ولا يُخزَّن موعدٌ افتراضي يقفل الجهات من أول إقلاع.
+create table if not exists submission_deadline (
+    id                 integer primary key check (id = 1),
+    due_at             text,
+    set_by_employee_id text not null default '',
+    set_by_name        text not null default '',
+    set_at             text
+);

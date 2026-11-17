@@ -61,7 +61,7 @@ namespace ZU_AuditIntel.Web.Data
             new("1000126", "عماد عبد الصمد كامل القرالة", "مسؤول كلية الدراسات العليا", AuditorRole.EntityRepresentative, DepartmentIds.FacultyGraduateStudies, "Zu#Graduate1"),
             new("1000127", "بدر محمد عبد الباسط الرواضية", "مسؤول الكلية التقنية", AuditorRole.EntityRepresentative, DepartmentIds.FacultyTechnical, "Zu#Technical1"),
 
-            new("3000301", "علي أحمد حسين الجبور", "رئيس وحدة التطوير وضمان الجودة", AuditorRole.QualityHead, null, "Zu#Quality1"),
+            new("3000301", "أنور حسين زكريا قطراوي", "رئيس وحدة التطوير وضمان الجودة", AuditorRole.QualityHead, null, "Zu#Quality1"),
 
             // صاحب النتيجة شخص غير من يدقّق: لا يرفع دليلاً ولا يوقّع بنداً، فشاشته هي الأخرى منفصلة.
             // رقمه 5000501 لا يقابل جهة، لأن نظره على الجامعة كلها لا على لوحة واحدة.

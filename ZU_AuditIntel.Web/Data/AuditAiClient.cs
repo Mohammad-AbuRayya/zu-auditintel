@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ZU_AuditIntel.Web.Data
@@ -10,7 +11,7 @@ namespace ZU_AuditIntel.Web.Data
     {
         public const string SectionName = "AuditAi";
 
-        public string BaseUrl { get; set; } = "http://127.0.0.1:8001";
+        public string BaseUrl { get; set; } = "http://127.0.0.1:8000";
         public int TimeoutSeconds { get; set; } = 25;
         public int PollIntervalSeconds { get; set; } = 2;
         public int PollBudgetSeconds { get; set; } = 300;
@@ -41,7 +42,10 @@ namespace ZU_AuditIntel.Web.Data
     /// جسر اللوحة إلى سيرفر الوكلاء: الإرسال يعود برقم مهمة في لحظات، ثم تُستطلع الحالة كل دورين.
     /// البديل القديم كان طلباً واحداً يمسك الاتصال أربع دقائق، فتبقى الشاشة بلا مؤشر ولا سبيل لإلغائه.
     /// </summary>
-    public sealed class AuditAiClient(IHttpClientFactory httpFactory, IOptions<AuditAiOptions> options)
+    public sealed class AuditAiClient(
+        IHttpClientFactory httpFactory,
+        IOptions<AuditAiOptions> options,
+        ILogger<AuditAiClient> logger)
     {
         public const string ClientName = "AiAgentClient";
 
@@ -93,6 +97,29 @@ namespace ZU_AuditIntel.Web.Data
                 ?? throw new InvalidOperationException("عاد سيرفر الوكلاء بلا حالة مهمة.");
         }
 
+        /// <summary>
+        /// الرفض البشري يُبلَّغ إلى ذاكرة الوكلاء ليُرفض الملف نفسه حتمياً في الفحص القادم. النداء
+        /// خلفي لا ينتظره المدقق: قراره محفوظ في القاعدة على كل حال، والذاكرة قيدٌ إضافي على الفحص
+        /// الآلي، ففشلها تحذيرٌ في السجل لا خطأٌ على الشاشة ولا إبطالاً لرفض.
+        /// </summary>
+        public async Task ReportHumanRejectionAsync(HumanRejectionFeedback feedback)
+        {
+            try
+            {
+                using var response = await Http().PostAsJsonAsync("/feedback", feedback);
+                if (response.IsSuccessStatusCode)
+                    return;
+
+                var detail = await response.Content.ReadAsStringAsync();
+                logger.LogWarning(
+                    "لم تُسجَّل ذاكرة الرفض البشري ({Status}): {Detail}", (int)response.StatusCode, detail);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "تعذّر إرسال الرفض البشري إلى {Url}/feedback.", Options.BaseUrl);
+            }
+        }
+
         private HttpClient Http() => httpFactory.CreateClient(ClientName);
 
         /// <summary>جسم الخطأ من بايثون يشرح السبب (ملف كبير، نوع مرفوض، قاعدة مفقودة) فبدونه يتعمى العطل.</summary>
@@ -109,4 +136,21 @@ namespace ZU_AuditIntel.Web.Data
 
     /// <summary>ملف دليل كما يُسلَّم إلى الوكيل: اسمه ونوع المحتوى وبايتاته المقروءة من المخزن.</summary>
     public sealed record AuditAiFilePayload(string Name, string ContentType, byte[] Bytes);
+
+    /// <summary>
+    /// رفض مدققٍ بشري كما يُخزَّن في ذاكرة الوكلاء: بصمة SHA-256 على بايتات الملف نفسها التي فحصها
+    /// الوكيل، والبند وأدلته المعلَنة وسبب الرفض بلغة المدقق. الأسماء snake_case لعقد بايثون.
+    /// </summary>
+    public sealed record HumanRejectionFeedback(
+        [property: JsonPropertyName("department_id")] string DepartmentId,
+        [property: JsonPropertyName("item_number")] int ItemNumber,
+        [property: JsonPropertyName("item_title")] string ItemTitle,
+        [property: JsonPropertyName("iso_reference")] string IsoReference,
+        [property: JsonPropertyName("evidence")] IReadOnlyList<string> Evidence,
+        [property: JsonPropertyName("file_name")] string FileName,
+        [property: JsonPropertyName("sha256")] string Sha256,
+        [property: JsonPropertyName("reason")] string Reason,
+        [property: JsonPropertyName("reviewer_name")] string ReviewerName,
+        [property: JsonPropertyName("reviewer_employee_id")] string ReviewerEmployeeId,
+        [property: JsonPropertyName("submission_id")] string SubmissionId);
 }

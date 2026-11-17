@@ -45,14 +45,11 @@ namespace ZU_AuditIntel.Web
             user.IsQualityHead() || user.IsSystemAdministrator();
 
         /// <summary>
-        /// صاحب النتيجة النهائية: يقرأ ما اعتمده المدقّق البشري من كل الجهات، ولا يملك تدقيقاً ولا توقيعاً.
-        /// مدير النظام يدخل بشاشة القارئ كما يدخل بقية الشاشات بصفته لا باسم أصحابها.
+        /// صاحب النتيجة النهائية: لا يملك تدقيقاً ولا توقيعاً ولا لوحة جهة، فتصله الإشعارات
+        /// والمراسلات وحدها. مدير النظام يدخل بقية الشاشات بصفته لا باسم أصحابها.
         /// </summary>
         public static bool IsFinalResultReader(this ClaimsPrincipal user) =>
             user.IsInRole(AuditorRole.FinalResultReader.ToString());
-
-        public static bool CanReadFinalResults(this ClaimsPrincipal user) =>
-            user.IsFinalResultReader() || user.IsSystemAdministrator();
 
         /// <summary>
         /// لوحة جهة يفتحها ممثلُ تلك الجهة حصراً. مدير النظام استثناء مقصود للمعاينة والدعم،
